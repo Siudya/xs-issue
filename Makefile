@@ -4,6 +4,7 @@ init:
 
 rtl:
 	mill xs-issue.test.runMain GenRtl -td build --full-stacktrace -X sverilog --emission-options disableRegisterRandomization
+	sed -i 's/\?baifenhao\!/%/g' build/*.sv
 
 idea:
 	mill -i mill.scalalib.GenIdea/idea
