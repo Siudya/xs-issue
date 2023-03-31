@@ -13,6 +13,12 @@
   *
   * See the Mulan PSL v2 for more details.
   ***************************************************************************************/
+/***************************************************************************************
+ * Author: Liang Sen
+ * E-mail: liangsen20z@ict.ac.cn
+ * Date: 2023-03-31
+ ****************************************************************************************/
+
 package issue
 import chisel3._
 import chisel3.util._
@@ -163,14 +169,44 @@ class SqueezeNetwork[T <: Valid[K], K <: Data](gen:T, channelNum:Int) extends Mo
   io.out := switchNetwork.io.out
 }
 
-class AllocateNetwork(bankNum:Int, entryNumPerBank:Int, srcNum:Int) extends Module{
+/** {{{
+  * Module Name: AllocateNetwork
+  *
+  * Function Description:
+  * Select empty entry of each reservation station bank
+  * and route the input [[MicroOp]] to allocated bank
+  * and entry. This module assure target bank of each
+  * input port is randomnand ready signals are always
+  * continuous in the low order of input port.
+  *
+  * Parameters:
+  *   bankNum:
+  *     The number of banks.
+  *   entryNumPerBank:
+  *     The number of entries in a bank.
+  *
+  * IO:
+  *   entriesValidBitVecList: [Input][Vec]
+  *     The list of valid bits in each bank.
+  *   enqFromDispatch: [Input][Vec][Decoupled]
+  *     Enqueue port from dispatch stage.
+  *   enqToRs: [Output][Vec][Valid]
+  *     Write signals to each reservation bank.
+  *     uop:
+  *       The enqueuing [[MicroOp]].
+  *     addr:
+  *       The entry index of the enqueue data.
+  * }}}
+  */
+
+class AllocateNetwork(bankNum:Int, entryNumPerBank:Int) extends Module{
   private val entryIdxWidth = log2Ceil(entryNumPerBank)
   private val bankIdxWidth = log2Ceil(entryNumPerBank)
   val io = IO(new Bundle {
     val entriesValidBitVecList = Input(Vec(bankNum, UInt(entryNumPerBank.W)))
-    val enqFromDispatch = Vec(bankNum, Flipped(DecoupledIO(new MicroOp(srcNum))))
+    val enqFromDispatch = Vec(bankNum, Flipped(DecoupledIO(new MicroOp)))
     val enqToRs = Vec(bankNum, Valid(new Bundle{
-      val uop = new MicroOp(srcNum)
+      val uop = new MicroOp
       val addr = UInt(entryIdxWidth.W)
     }))
   })

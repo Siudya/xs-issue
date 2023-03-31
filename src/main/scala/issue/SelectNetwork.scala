@@ -13,6 +13,11 @@
   *
   * See the Mulan PSL v2 for more details.
   ***************************************************************************************/
+/***************************************************************************************
+  * Author: Liang Sen
+  * E-mail: liangsen20z@ict.ac.cn
+  * Date: 2023-03-31
+  ****************************************************************************************/
 package issue
 import chisel3._
 import chisel3.util._
@@ -60,6 +65,36 @@ class Selector(bankNum:Int, entryNum:Int) extends Module{
   private val res  = ParallelOperation(io.in, operationFunction)
   io.out := res
 }
+
+/** {{{
+  * Module Name: SelectedNetwork
+  *
+  * Function Description:
+  *   Select ready and supported instructions from several
+  *   reservation station banks.
+  *
+  * Parameters:
+  *   bankNum:
+  *     The number of banks.
+  *   entryNum:
+  *     The number of entries in a bank.
+  *   issueNum:
+  *     The number of issue port for a certain type of instructions.
+  *   fuTypeList:
+  *     The list of function unit types, to which the selected
+  *     instructions should be sent.
+  *
+  * IO:
+  *   selectInfo: [Input][Vec]
+  *     The necessary information for selection, which comes from
+  *     reservation station banks.
+  *   issuePtr: [Output][Vec][Valid]
+  *     bankIdx:
+  *       The bank index of selected instruction.
+  *     entryIdx:
+  *       The entry index of selected instruction.
+  * }}}
+*/
 
 class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt]) extends Module {
   require(issueNum <= bankNum && 0 < issueNum && bankNum % issueNum == 0, "Illegal number of issue ports are supported now!")
