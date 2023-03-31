@@ -99,15 +99,15 @@ class Selector(bankNum:Int, entryNum:Int, inputWidth:Int) extends Module{
 class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt]) extends Module {
   require(issueNum <= bankNum && 0 < issueNum && bankNum % issueNum == 0, "Illegal number of issue ports are supported now!")
   val io = IO(new Bundle{
-    val selectInfo = Input(Vec(bankNum,Vec(entryNum, new SelectInfo)))
+    val selectInfo = Input(Vec(bankNum,Vec(entryNum, Valid(new SelectInfo))))
     val issuePtr = Output(Vec(issueNum, Valid(new Bundle{
       val bankIdxOH = UInt(bankNum.W)
       val entryIdxOH = UInt(entryNum.W)
     })))
   })
 
-  private val issueValidBitVecList = io.selectInfo.map(_.map(info => info.readyToIssue & (Cat(fuTypeList.map(_ === info.fuType)).orR)))
-  private val issueDataVecList = io.selectInfo
+  private val issueValidBitVecList = io.selectInfo.map(_.map(info => info.valid & (Cat(fuTypeList.map(_ === info.bits.fuType)).orR)))
+  private val issueDataVecList = io.selectInfo.map(_.map(_.bits))
   private val issueBankIdxVecList = io.selectInfo.indices.map(idx => Seq.fill(entryNum)((1<<idx).U(bankNum.W)))
   private val issueEntryIdxVecList = io.selectInfo.indices.map(idx => Seq.tabulate(entryNum)(idx0 => (1<<idx0).U(entryNum.W)))
   private val issueAllDataList = issueValidBitVecList.zip(issueDataVecList).zip(issueBankIdxVecList).zip(issueEntryIdxVecList).map({
@@ -138,7 +138,7 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt
   private val flatInputInfoVec = VecInit(io.selectInfo.map(_.reverse).reverse.reduce(_++_))
   for(outPort <- io.issuePtr){
     val selectedInfo = Mux1H(UIntToOH(OHToUInt(outPort.bits.bankIdxOH) * entryNum.U + OHToUInt(outPort.bits.entryIdxOH)), flatInputInfoVec)
-    xs_assert(Mux(outPort.valid, selectedInfo.readyToIssue & fuTypeList.map(_ === selectedInfo.fuType).reduce(_|_), true.B))
+    xs_assert(Mux(outPort.valid, selectedInfo.valid & fuTypeList.map(_ === selectedInfo.bits.fuType).reduce(_|_), true.B))
   }
 
   //TODO: Should check if the selected instruction is the oldest one
