@@ -25,23 +25,23 @@ import chisel3.util._
 import xs.utils.Assertion.xs_assert
 import xs.utils.ParallelOperation
 class BankIdxGenerator(entryNum:Int) extends Module {
-  private val idxWidth = log2Ceil(entryNum)
+  private val idxWidth = entryNum
   val io = IO(new Bundle {
     val entriesValidBitVec = Input(UInt(entryNum.W))
-    val entryIndex = Valid(UInt(idxWidth.W))
+    val entryIndexOH = Valid(UInt(idxWidth.W))
   })
-  private val idxList = Seq.tabulate(entryNum)(idx => idx.U(idxWidth.W))
-  private val candidates = io.entriesValidBitVec.asBools zip idxList
+  private val idxOHList = Seq.tabulate(entryNum)(idx => (1 << idx).U(idxWidth.W))
+  private val candidates = io.entriesValidBitVec.asBools zip idxOHList
   private def validMux(a:(Bool,UInt), b:(Bool,UInt)) : (Bool,UInt) = {
     val resData = Mux(a._1, a._2, b._2)
     val valid = a._1 | b._1
     (valid, resData)
   }
   private val res = ParallelOperation(candidates, validMux)
-  io.entryIndex.valid := res._1
-  io.entryIndex.bits := res._2
+  io.entryIndexOH.valid := res._1
+  io.entryIndexOH.bits := res._2
 
-  xs_assert(Mux(io.entryIndex.valid, (UIntToOH(io.entryIndex.bits) & io.entriesValidBitVec).orR, true.B))
+  xs_assert(Mux(io.entryIndexOH.valid, (io.entryIndexOH.bits & io.entriesValidBitVec).orR, true.B))
 }
 
 class Switch2[T <: Data](gen:T) extends Module{
@@ -70,7 +70,7 @@ class LSFR(width:Int, init:Option[Int] = None) extends Module{
 class SwitchNetwork[T <: Data](gen:T, channelNum:Int) extends Module{
   require(channelNum == 4, "Only 4 channles are supported for now!")
   //TODO: Number of switches should be calculated from channels number
-  val switchNum = 6
+  private val switchNum = 6
   val io = IO(new Bundle{
     val in = Input(Vec(channelNum, gen))
     val out = Output(Vec(channelNum, gen))
@@ -194,20 +194,20 @@ class SqueezeNetwork[T <: Valid[K], K <: Data](gen:T, channelNum:Int) extends Mo
   *     Write signals to each reservation bank.
   *     uop:
   *       The enqueuing [[MicroOp]].
-  *     addr:
-  *       The entry index of the enqueue data.
+  *     addrOH:
+  *       The one hot format entry index of the enqueue data.
   * }}}
   */
 
 class AllocateNetwork(bankNum:Int, entryNumPerBank:Int) extends Module{
-  private val entryIdxWidth = log2Ceil(entryNumPerBank)
-  private val bankIdxWidth = log2Ceil(entryNumPerBank)
+  private val entryIdxOHWidth = entryNumPerBank
+  private val bankIdxWidth = log2Ceil(bankNum)
   val io = IO(new Bundle {
     val entriesValidBitVecList = Input(Vec(bankNum, UInt(entryNumPerBank.W)))
     val enqFromDispatch = Vec(bankNum, Flipped(DecoupledIO(new MicroOp)))
     val enqToRs = Vec(bankNum, Valid(new Bundle{
       val uop = new MicroOp
-      val addr = UInt(entryIdxWidth.W)
+      val addrOH = UInt(entryIdxOHWidth.W)
     }))
   })
 
@@ -215,7 +215,7 @@ class AllocateNetwork(bankNum:Int, entryNumPerBank:Int) extends Module{
   private val entryIdxList = entriesEmptyBitVecList.map({ emptyBitVec =>
     val idxGen = Module(new BankIdxGenerator(entryNumPerBank))
     idxGen.io.entriesValidBitVec := emptyBitVec
-    idxGen.io.entryIndex
+    idxGen.io.entryIndexOH
   })
   private val bankIdxList = entryIdxList.map(_.valid).zipWithIndex.map({ case(bankValid, bankIdx) =>
     val res = Wire(Valid(UInt(bankIdxWidth.W)))
@@ -231,7 +231,7 @@ class AllocateNetwork(bankNum:Int, entryNumPerBank:Int) extends Module{
   private val squeezer = Module(new SqueezeNetwork[Valid[UInt], UInt](Valid(UInt(bankIdxWidth.W)), bankNum))
   squeezer.io.in := randomizer.io.out
 
-  for((port, sig) <- io.enqToRs.map(_.bits.addr) zip entryIdxList.map(_.bits)) {port := sig}
+  for((port, sig) <- io.enqToRs.map(_.bits.addrOH) zip entryIdxList.map(_.bits)) {port := sig}
 
   private val enqPortSelOHList = Seq.tabulate(bankNum)(idx => squeezer.io.out.map(_.bits === idx.U))
   private val portDataList = enqPortSelOHList.map(Mux1H(_,io.enqFromDispatch))
