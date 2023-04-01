@@ -98,6 +98,7 @@ class XSBundle extends Bundle{
   def GprIdxWidth = log2Ceil(GprEntriesNum)
   def FprIdxWidth = log2Ceil(FprEntriesNum)
   val LpvLength = 4
+  val loadUnitNum = 2
 }
 abstract class Imm(val len: Int) extends Bundle {
   def toImm32(minBits: UInt): UInt = do_toImm32(minBits(len - 1, 0))
@@ -256,43 +257,36 @@ class MicroOp extends Bundle {
   val robIdx = new RobPtr
 }
 
-abstract class BasicStatusArrayEntry(srcNum:Int, isIntSrc:Boolean, withLPV:Boolean) extends XSBundle{
+abstract class BasicStatusArrayEntry(srcNum:Int, isIntSrc:Boolean) extends XSBundle{
   val psrc = Vec(srcNum, UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W))
-  val srcState = Vec(srcNum, UInt(if(withLPV)LpvLength.W else 1.W))
+  val pdest = UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W)
+  val rfWen = Bool()
+  val fpWen = Bool()
+  val srcState = Vec(srcNum, UInt(2.W))
+  val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
   val fuType = FuType()
   val robIdx = new RobPtr
   def toIssueInfo:Valid[SelectInfo]
 }
-class MemoryStatusArrayEntry extends BasicStatusArrayEntry(2, true,true){
+class MemoryStatusArrayEntry extends BasicStatusArrayEntry(2, true){
   def toIssueInfo: Valid[SelectInfo] = {
-    val src0Ready = srcState(0) === Fill(LpvLength, 1.U)
-    val src1Ready = srcState(1) === Fill(LpvLength, 1.U)
-    val src0ReadyLpv = PopCount(srcState(1)) === 1.U
-    val src1ReadyLpv = PopCount(srcState(1)) === 1.U
-    val checkSrcState = (src0Ready & src1Ready) | (src0Ready & src1ReadyLpv) | (src0ReadyLpv & src1Ready)
     val res = Wire(Valid(new SelectInfo))
-    res.valid := checkSrcState
-    res.bits.fuType := fuType
-    res.bits.robPtr := robIdx
     res
   }
 }
-class FloatStatusArrayEntry extends BasicStatusArrayEntry(3, false,true){
+class FloatStatusArrayEntry extends BasicStatusArrayEntry(3, false){
   def toIssueInfo: Valid[SelectInfo] = {
-    val src0Ready = srcState(0) === Fill(LpvLength, 1.U)
-    val src1Ready = srcState(1) === Fill(LpvLength, 1.U)
-    val src0ReadyLpv = PopCount(srcState(1)) === 1.U
-    val src1ReadyLpv = PopCount(srcState(1)) === 1.U
-    val checkSrcState = (src0Ready & src1Ready) | (src0Ready & src1ReadyLpv) | (src0ReadyLpv & src1Ready)
     val res = Wire(Valid(new SelectInfo))
-    res.valid := checkSrcState
-    res.bits.fuType := fuType
-    res.bits.robPtr := robIdx
     res
   }
 }
 
-class SelectInfo extends Bundle{
+class SelectInfo extends XSBundle{
   val fuType = FuType()
+  val shouldDeq = Bool()
+  val lpv = UInt(LpvLength.W)
+  val pdest = UInt(GprIdxWidth.W)
+  val rfWen = Bool()
+  val fpWen = Bool()
   val robPtr = new RobPtr
 }

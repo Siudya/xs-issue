@@ -22,17 +22,18 @@ package issue.IntRs
 import chisel3._
 import chisel3.util._
 import issue._
-class IntegerStatusArrayEntry extends BasicStatusArrayEntry(2, true,true){
+class IntegerStatusArrayEntry extends BasicStatusArrayEntry(2, true){
   def toIssueInfo: Valid[SelectInfo] = {
-    val src0Ready = srcState(0) === Fill(LpvLength, 1.U)
-    val src1Ready = srcState(1) === Fill(LpvLength, 1.U)
-    val src0ReadyLpv = PopCount(srcState(1)) === 1.U
-    val src1ReadyLpv = PopCount(srcState(1)) === 1.U
-    val checkSrcState = (src0Ready & src1Ready) | (src0Ready & src1ReadyLpv) | (src0ReadyLpv & src1Ready)
+    val readyToIssue = srcState(0).orR & srcState(1).orR
     val res = Wire(Valid(new SelectInfo))
-    res.valid := checkSrcState
+    res.valid := readyToIssue
     res.bits.fuType := fuType
     res.bits.robPtr := robIdx
+    res.bits.shouldDeq := Cat(lpv).orR
+    res.bits.lpv := lpv(0) | lpv(1)
+    res.bits.pdest := pdest
+    res.bits.fpWen := fpWen
+    res.bits.rfWen := rfWen
     res
   }
 }
@@ -59,45 +60,45 @@ class IntergerStatusArray(entryNum:Int, deqWidth:Int) extends Module{
     val deq = Input(Vec(deqWidth, Valid(UInt(entryNum.W))))
   })
 
+  private val entryWidth = (new IntegerStatusArrayEntry).getWidth
   private val statusArray = Reg(Vec(entryNum, new IntegerStatusArrayEntry))
-  private val statusArrayValid = RegInit(0.U(entryNum.W))
+  private val statusArrayValid = RegInit(VecInit(Seq.fill(entryNum)(false.B)))
 
   private val statusArrayNext = WireInit(statusArray)
-  private val statusArrayValidNext = Wire(UInt(entryNum.W))
-  statusArrayValidNext := statusArrayValid
+  private val statusArrayValidNext = WireInit(statusArrayValid)
   private val statusArrayEnable = WireInit(0.U(entryNum.W))
 
   private val statusArrayEnqData = Wire(Vec(entryNum, new IntegerStatusArrayEntry))
-  private val statusArrayEnqValid = Wire(UInt(entryNum.W))
+  private val statusArrayEnqValid = Wire(Vec(entryNum, Bool()))
   private val statusArrayEnqEnable = Wire(UInt(entryNum.W))
 
   private val statusArrayFinalNext = Wire(Vec(entryNum, new IntegerStatusArrayEntry))
-  private val statusArrayValidFinalNext = Wire(UInt(entryNum.W))
+  private val statusArrayValidFinalNext = Wire(Vec(entryNum, Bool()))
   private val statusArrayFinalEnable = Wire(UInt(entryNum.W))
 
   //Start of final update logic
-  private val updateMux = Module(new BatchMux(Valid(new IntegerStatusArrayEntry), entryNum))
+  private val updateMux = Module(new BatchMux(Valid(UInt(entryWidth.W)), entryNum))
   updateMux.io.sel := Mux(io.enq.valid, io.enq.bits.addrOH, 0.U)
-  updateMux.io.in0.zip(statusArrayNext).zip(statusArrayValidNext.asBools).foreach({
+  updateMux.io.in0.zip(statusArrayNext).zip(statusArrayValidNext).foreach({
     case((i, d), v) =>
       i.valid := v
-      i.bits := d
+      i.bits := d.asTypeOf(UInt(entryWidth.W))
   })
-  updateMux.io.in1.zip(statusArrayEnqData).zip(statusArrayEnqValid.asBools).foreach({
+  updateMux.io.in1.zip(statusArrayEnqData).zip(statusArrayEnqValid).foreach({
     case ((i, d), v) =>
       i.valid := v
-      i.bits := d
+      i.bits := d.asTypeOf(UInt(entryWidth.W))
   })
-  updateMux.io.out.zip(statusArrayFinalNext).zip(statusArrayValidFinalNext.asBools).foreach({
+  updateMux.io.out.zip(statusArrayFinalNext).zip(statusArrayValidFinalNext).foreach({
     case ((o, d), v) =>
       v := o.valid
-      d := o.bits
+      d := o.bits.asTypeOf(new IntegerStatusArrayEntry)
   })
   statusArrayFinalEnable := statusArrayEnable | statusArrayEnqEnable
   for(((((rd, rv), nd),nv),en) <- statusArray
-    .zip(statusArrayValid.asBools)
+    .zip(statusArrayValid)
     .zip(statusArrayFinalNext)
-    .zip(statusArrayValidFinalNext.asBools)
+    .zip(statusArrayValidFinalNext)
     .zip(statusArrayFinalEnable.asBools)){
     when(en){
       rd := nd
@@ -107,7 +108,7 @@ class IntergerStatusArray(entryNum:Int, deqWidth:Int) extends Module{
   //End of final update logic
 
   //Start of enqueue circuit description
-  statusArrayEnqData.zip(statusArrayEnqValid.asBools).foreach(elm=> {
+  statusArrayEnqData.zip(statusArrayEnqValid).foreach(elm=> {
     elm._1 := io.enq.bits.data
     elm._2 := true.B
   })
@@ -117,19 +118,19 @@ class IntergerStatusArray(entryNum:Int, deqWidth:Int) extends Module{
   //Start of select logic
   for(((issInfo, saEntry), saValid) <- io.issueInfo
     .zip(statusArray)
-    .zip(statusArrayValid.asBools)){
-    issInfo := Mux(saValid, saEntry.toIssueInfo, 0.U)
+    .zip(statusArrayValid)){
+    issInfo := Mux(saValid, saEntry.toIssueInfo, 0.U.asTypeOf(saEntry.toIssueInfo))
   }
   //End of select logic
 
   //TODO: Testing codes, should be removed.
   statusArrayEnable := io.deq.map(elm => Mux(elm.valid, elm.bits, 0.U)).reduce(_|_)
   private val entriesAffectByDeq = io.deq.map(elm => Mux(elm.valid, elm.bits, 0.U)).reduce(_|_)
-  statusArray.zip(statusArrayValid.asBools).zipWithIndex.foreach({
+  statusArrayNext.zip(statusArrayValidNext).zipWithIndex.foreach({
     case((entry, entryValid),idx) =>
       when(entriesAffectByDeq(idx)){
         entryValid := false.B
-        entry := 0.U
+        entry := 0.U.asTypeOf(entry)
       }
   })
 }

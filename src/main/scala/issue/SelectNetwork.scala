@@ -24,29 +24,28 @@ import chisel3.util._
 import xs.utils.Assertion.xs_assert
 import xs.utils.ParallelOperation
 
-class SelectorInfo(bankIdxWidth:Int, entryIdxWidth:Int) extends Bundle{
-  val robPtr = new RobPtr
+class SelectResp(bankIdxWidth:Int, entryIdxWidth:Int) extends Bundle {
+  val info = new SelectInfo
   val entryIdxOH = UInt(entryIdxWidth.W)
   val bankIdxOH = UInt(bankIdxWidth.W)
 }
-
 class SelectMux(bankIdxWidth:Int, entryIdxWidth:Int) extends Module{
   val io = IO(new Bundle{
-    val in0 = Input(Valid(new SelectorInfo(bankIdxWidth, entryIdxWidth)))
-    val in1 = Input(Valid(new SelectorInfo(bankIdxWidth, entryIdxWidth)))
-    val out = Output(Valid(new SelectorInfo(bankIdxWidth, entryIdxWidth)))
+    val in0 = Input(Valid(new SelectResp(bankIdxWidth, entryIdxWidth)))
+    val in1 = Input(Valid(new SelectResp(bankIdxWidth, entryIdxWidth)))
+    val out = Output(Valid(new SelectResp(bankIdxWidth, entryIdxWidth)))
   })
   private val valid0 = io.in0.valid
   private val valid1 = io.in1.valid
-  private val ptr0 = io.in0.bits.robPtr
-  private val ptr1 = io.in1.bits.robPtr
+  private val ptr0 = io.in0.bits.info.robPtr
+  private val ptr1 = io.in1.bits.info.robPtr
   private val validVec = Cat(valid1, valid0)
   private val sel = Mux(validVec === "b01".U, true.B, Mux(validVec === "b10".U, false.B, Mux(validVec === "b11".U, ptr0 < ptr1, true.B)))
   private val res = Mux(sel, io.in0, io.in1)
   io.out := res
 }
 object SelectMux{
-  def apply(in0: Valid[SelectorInfo], in1: Valid[SelectorInfo], bankIdxWidth:Int, entryIdxWidth:Int):Valid[SelectorInfo] = {
+  def apply(in0: Valid[SelectResp], in1: Valid[SelectResp], bankIdxWidth:Int, entryIdxWidth:Int):Valid[SelectResp] = {
     val smux = Module(new SelectMux(bankIdxWidth, entryIdxWidth))
     smux.io.in0 := in0
     smux.io.in1 := in1
@@ -58,8 +57,8 @@ class Selector(bankNum:Int, entryNum:Int, inputWidth:Int) extends Module{
   private val bankIdxWidth = bankNum
   private val entryIdxWidth = entryNum
   val io = IO(new Bundle{
-    val in = Input(Vec(inputWidth, Valid(new SelectorInfo(bankIdxWidth, entryIdxWidth))))
-    val out = Output(Valid(new SelectorInfo(bankIdxWidth, entryIdxWidth)))
+    val in = Input(Vec(inputWidth, Valid(new SelectResp(bankIdxWidth, entryIdxWidth))))
+    val out = Output(Valid(new SelectResp(bankIdxWidth, entryIdxWidth)))
   })
   private val operationFunction = SelectMux(_, _, bankIdxWidth, entryIdxWidth)
   private val res  = ParallelOperation(io.in, operationFunction)
@@ -88,7 +87,9 @@ class Selector(bankNum:Int, entryNum:Int, inputWidth:Int) extends Module{
   *   selectInfo: [Input][Vec]
   *     The necessary information for selection, which comes from
   *     reservation station banks.
-  *   issuePtr: [Output][Vec][Valid]
+  *   issueInfo: [Output][Vec][Valid]
+  *     info:
+  *       The information of selected instruction.
   *     bankIdxOH:
   *       The one hot format bank index of selected instruction.
   *     entryIdxOH:
@@ -100,10 +101,7 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt
   require(issueNum <= bankNum && 0 < issueNum && bankNum % issueNum == 0, "Illegal number of issue ports are supported now!")
   val io = IO(new Bundle{
     val selectInfo = Input(Vec(bankNum,Vec(entryNum, Valid(new SelectInfo))))
-    val issuePtr = Output(Vec(issueNum, Valid(new Bundle{
-      val bankIdxOH = UInt(bankNum.W)
-      val entryIdxOH = UInt(entryNum.W)
-    })))
+    val issueInfo = Output(Vec(issueNum, Valid(new SelectResp(bankNum, entryNum))))
   })
 
   private val issueValidBitVecList = io.selectInfo.map(_.map(info => info.valid & (Cat(fuTypeList.map(_ === info.bits.fuType)).orR)))
@@ -124,19 +122,20 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt
   for((s, si) <- selectorSeq zip selectorInput){
     s.io.in.zip(si).foreach({case(inPort, driver) =>
       inPort.valid := driver._1._1._1
-      inPort.bits.robPtr := driver._1._1._2.robPtr
+      inPort.bits.info := driver._1._1._2
       inPort.bits.bankIdxOH := driver._1._2
       inPort.bits.entryIdxOH := driver._2
     })
   }
-  for((outPort,driver) <- io.issuePtr zip selectorSeq){
+  for((outPort,driver) <- io.issueInfo zip selectorSeq){
     outPort.valid := driver.io.out.valid
     outPort.bits.bankIdxOH := driver.io.out.bits.bankIdxOH
     outPort.bits.entryIdxOH := driver.io.out.bits.entryIdxOH
+    outPort.bits.info := driver.io.out.bits.info
   }
 
   private val flatInputInfoVec = VecInit(io.selectInfo.map(_.reverse).reverse.reduce(_++_))
-  for(outPort <- io.issuePtr){
+  for(outPort <- io.issueInfo){
     val selectedInfo = Mux1H(UIntToOH(OHToUInt(outPort.bits.bankIdxOH) * entryNum.U + OHToUInt(outPort.bits.entryIdxOH)), flatInputInfoVec)
     xs_assert(Mux(outPort.valid, selectedInfo.valid & fuTypeList.map(_ === selectedInfo.bits.fuType).reduce(_|_), true.B))
   }
