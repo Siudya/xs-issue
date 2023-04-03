@@ -21,6 +21,7 @@
 package issue
 import chisel3._
 import chisel3.util._
+import issue.RedirectLevel.flushItself
 import xs.utils.Assertion.xs_assert
 import xs.utils.ParallelOperation
 
@@ -100,6 +101,7 @@ class Selector(bankNum:Int, entryNum:Int, inputWidth:Int) extends Module{
 class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt]) extends Module {
   require(issueNum <= bankNum && 0 < issueNum && bankNum % issueNum == 0, "Illegal number of issue ports are supported now!")
   val io = IO(new Bundle{
+    val redirect = Input(Valid(new Redirect))
     val selectInfo = Input(Vec(bankNum,Vec(entryNum, Valid(new SelectInfo))))
     val issueInfo = Output(Vec(issueNum, Valid(new SelectResp(bankNum, entryNum))))
   })
@@ -128,7 +130,10 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt
     })
   }
   for((outPort,driver) <- io.issueInfo zip selectorSeq){
-    outPort.valid := driver.io.out.valid
+    val robIdxLess = driver.io.out.bits.info.robPtr < io.redirect.bits.robIdx
+    val robIdxLessEqual = driver.io.out.bits.info.robPtr <= io.redirect.bits.robIdx
+    val notFlushed = Mux(!io.redirect.valid, true.B, Mux(flushItself(io.redirect.bits.level), robIdxLess, robIdxLessEqual))
+    outPort.valid := driver.io.out.valid && notFlushed
     outPort.bits.bankIdxOH := driver.io.out.bits.bankIdxOH
     outPort.bits.entryIdxOH := driver.io.out.bits.entryIdxOH
     outPort.bits.info := driver.io.out.bits.info

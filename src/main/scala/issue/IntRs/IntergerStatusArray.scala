@@ -21,15 +21,17 @@
 package issue.IntRs
 import chisel3._
 import chisel3.util._
+import issue.RedirectLevel.flushItself
 import issue._
+import xs.utils.Assertion.xs_assert
 class IntegerStatusArrayEntry extends BasicStatusArrayEntry(2, true){
+  val issued = Bool()
   def toIssueInfo: Valid[SelectInfo] = {
-    val readyToIssue = srcState(0).orR & srcState(1).orR
+    val readyToIssue = srcState(0) === SrcState.rdy & srcState(1) === SrcState.rdy & !issued
     val res = Wire(Valid(new SelectInfo))
     res.valid := readyToIssue
     res.bits.fuType := fuType
     res.bits.robPtr := robIdx
-    res.bits.shouldDeq := Cat(lpv).orR
     res.bits.lpv := lpv(0) | lpv(1)
     res.bits.pdest := pdest
     res.bits.fpWen := fpWen
@@ -38,82 +40,99 @@ class IntegerStatusArrayEntry extends BasicStatusArrayEntry(2, true){
   }
 }
 
-class BatchMux[T <: Data](gen: T, width:Int) extends Module{
+class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends Module{
   val io = IO(new Bundle{
-    val sel = Input(UInt(width.W))
-    val in0 = Input(Vec(width, gen))
-    val in1 = Input(Vec(width, gen))
-    val out = Output(Vec(width, gen))
+    val entry = Input(Valid(new IntegerStatusArrayEntry))
+    val entryNext = Output(Valid(new IntegerStatusArrayEntry))
+    val updateEnable = Output(Bool())
+    val enq = Input(Valid(new IntegerStatusArrayEntry))
+    val issue = Input(Vec(issueWidth, Bool()))
+    val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo(false))))
+    val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new WakeUpInfo(true))))
+    val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
+    val redirect = Input(Valid(new Redirect))
   })
-  for((((o, i0), i1), sel) <- io.out.zip(io.in0).zip(io.in1).zip(io.sel.asBools)){
-    o := Mux(sel, i1, i0)
+
+  io.entryNext := io.entry
+  private val miscNext = WireInit(io.entry)
+  private val miscUpdateEn = WireInit(false.B)
+  private val enqNext = Wire(Valid(new IntegerStatusArrayEntry))
+  private val enqUpdateEn = WireInit(false.B)
+  private val redirectNext = WireInit(io.entry)
+
+  //Start of wake up
+  private val pregMatch = io.entry.bits.psrc.map(p => (io.wakeup ++ io.loadEarlyWakeup).map(elm => (elm.bits.pdest === p) && elm.valid))
+  private val specPregMatch = io.entry.bits.psrc.map(p => io.loadEarlyWakeup.map(elm => elm.bits.pdest === p && elm.valid))
+  for((((n, o), v), t) <- miscNext.bits.srcState zip io.entry.bits.srcState zip pregMatch zip io.entry.bits.srcType){
+    when(Cat(v).orR){
+      n := Mux(t === SrcType.reg, SrcState.rdy, o)
+      miscUpdateEn := true.B
+    }
   }
+  private val miscUpdateEn0 = pregMatch.map(_.reduce(_|_)).reduce(_|_)
+  //End of wake up
+
+  //Start of issue and cancel
+  private val shouldBeCancelled = io.earlyWakeUpCancel.zip(io.entry.bits.lpv).map({ case(c, l) => c & l(0)}).reduce(_|_)
+  private val shouldBeIssued = Cat(io.issue).orR
+  miscNext.bits.issued := Mux(shouldBeCancelled, false.B, Mux(shouldBeIssued, true.B, io.entry.bits.issued))
+  private val miscUpdateEn1 = Cat(shouldBeCancelled, shouldBeIssued)
+  //End of issue and cancel
+
+  //Start of dequeue
+  private val mayNeedReplay = io.entry.bits.lpv.map(_.orR).reduce(_|_)
+  when(io.entry.bits.issued & !mayNeedReplay){
+    miscNext.valid := false.B
+    miscUpdateEn := true.B
+  }
+  //End of dequeue
+
+  //Start of LPV shift
+  for((ln,lo) <- miscNext.bits.lpv zip io.entry.bits.lpv){
+    ln := Cat(0.U(1.W), lo(lo.getWidth-1,1))
+  }
+  private val miscUpdateEn2 = io.entry.bits.lpv.map(_.orR).reduce(_|_)
+  //End of deq
+
+  //Start of Enqueue
+  enqNext.bits := io.enq.bits
+  private val enqNotSuppressed = Mux(!io.redirect.valid, true.B,
+    Mux(flushItself(io.redirect.bits.level), io.enq.bits.robIdx < io.redirect.bits.robIdx,
+      io.enq.bits.robIdx <= io.redirect.bits.robIdx
+    )
+  )
+  enqNext.valid := enqNotSuppressed & io.enq.valid
+  enqUpdateEn := enqNext.valid
+  //End of Enqueue
+
+  //Start of redirect
+  private val shouldBeFlushed = !enqNotSuppressed
+  redirectNext.valid := false.B
+  //End of redirect
+
+  io.updateEnable := shouldBeFlushed | enqUpdateEn | miscUpdateEn2 | miscUpdateEn1 | miscUpdateEn0
+  io.entryNext := Mux(enqUpdateEn, enqNext, Mux(shouldBeFlushed, redirectNext, miscNext))
 }
-class IntergerStatusArray(entryNum:Int, deqWidth:Int) extends Module{
+
+class IntergerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends Module{
   val io = IO(new Bundle{
+    val redirect = Input(Valid(new Redirect))
+
     val issueInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
 
     val enq = Input(Valid(new Bundle{
       val addrOH = UInt(entryNum.W)
       val data = new IntegerStatusArrayEntry
     }))
-    val deq = Input(Vec(deqWidth, Valid(UInt(entryNum.W))))
+
+    val issue = Input(Vec(issueWidth, Valid(UInt(entryNum.W))))
+    val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo(false))))
+    val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new WakeUpInfo(true))))
+    val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
   })
 
-  private val entryWidth = (new IntegerStatusArrayEntry).getWidth
   private val statusArray = Reg(Vec(entryNum, new IntegerStatusArrayEntry))
   private val statusArrayValid = RegInit(VecInit(Seq.fill(entryNum)(false.B)))
-
-  private val statusArrayNext = WireInit(statusArray)
-  private val statusArrayValidNext = WireInit(statusArrayValid)
-  private val statusArrayEnable = WireInit(0.U(entryNum.W))
-
-  private val statusArrayEnqData = Wire(Vec(entryNum, new IntegerStatusArrayEntry))
-  private val statusArrayEnqValid = Wire(Vec(entryNum, Bool()))
-  private val statusArrayEnqEnable = Wire(UInt(entryNum.W))
-
-  private val statusArrayFinalNext = Wire(Vec(entryNum, new IntegerStatusArrayEntry))
-  private val statusArrayValidFinalNext = Wire(Vec(entryNum, Bool()))
-  private val statusArrayFinalEnable = Wire(UInt(entryNum.W))
-
-  //Start of final update logic
-  private val updateMux = Module(new BatchMux(Valid(UInt(entryWidth.W)), entryNum))
-  updateMux.io.sel := Mux(io.enq.valid, io.enq.bits.addrOH, 0.U)
-  updateMux.io.in0.zip(statusArrayNext).zip(statusArrayValidNext).foreach({
-    case((i, d), v) =>
-      i.valid := v
-      i.bits := d.asTypeOf(UInt(entryWidth.W))
-  })
-  updateMux.io.in1.zip(statusArrayEnqData).zip(statusArrayEnqValid).foreach({
-    case ((i, d), v) =>
-      i.valid := v
-      i.bits := d.asTypeOf(UInt(entryWidth.W))
-  })
-  updateMux.io.out.zip(statusArrayFinalNext).zip(statusArrayValidFinalNext).foreach({
-    case ((o, d), v) =>
-      v := o.valid
-      d := o.bits.asTypeOf(new IntegerStatusArrayEntry)
-  })
-  statusArrayFinalEnable := statusArrayEnable | statusArrayEnqEnable
-  for(((((rd, rv), nd),nv),en) <- statusArray
-    .zip(statusArrayValid)
-    .zip(statusArrayFinalNext)
-    .zip(statusArrayValidFinalNext)
-    .zip(statusArrayFinalEnable.asBools)){
-    when(en){
-      rd := nd
-      rv := nv
-    }
-  }
-  //End of final update logic
-
-  //Start of enqueue circuit description
-  statusArrayEnqData.zip(statusArrayEnqValid).foreach(elm=> {
-    elm._1 := io.enq.bits.data
-    elm._2 := true.B
-  })
-  statusArrayEnqEnable := Mux(io.enq.valid, io.enq.bits.addrOH, 0.U)
-  //End of enqueue circuit description
 
   //Start of select logic
   for(((issInfo, saEntry), saValid) <- io.issueInfo
@@ -123,14 +142,25 @@ class IntergerStatusArray(entryNum:Int, deqWidth:Int) extends Module{
   }
   //End of select logic
 
-  //TODO: Testing codes, should be removed.
-  statusArrayEnable := io.deq.map(elm => Mux(elm.valid, elm.bits, 0.U)).reduce(_|_)
-  private val entriesAffectByDeq = io.deq.map(elm => Mux(elm.valid, elm.bits, 0.U)).reduce(_|_)
-  statusArrayNext.zip(statusArrayValidNext).zipWithIndex.foreach({
-    case((entry, entryValid),idx) =>
-      when(entriesAffectByDeq(idx)){
-        entryValid := false.B
-        entry := 0.U.asTypeOf(entry)
-      }
-  })
+  for(((v, d), idx) <- statusArrayValid
+    .zip(statusArray)
+    .zipWithIndex
+  ){
+    val updateNetwork = Module(new IntegerStatusArrayEntryUpdateNetwork(issueWidth, wakeupWidth, loadUnitNum))
+    updateNetwork.io.entry.valid := v
+    updateNetwork.io.entry.bits := d
+    updateNetwork.io.enq.valid := io.enq.valid & io.enq.bits.addrOH(idx)
+    updateNetwork.io.enq.bits := io.enq.bits.data
+    updateNetwork.io.issue := VecInit(io.issue.map(i => i.valid & i.bits(idx)))
+    updateNetwork.io.wakeup := io.wakeup
+    updateNetwork.io.loadEarlyWakeup := io.loadEarlyWakeup
+    updateNetwork.io.earlyWakeUpCancel := io.earlyWakeUpCancel
+    updateNetwork.io.redirect := io.redirect
+
+    val en = updateNetwork.io.updateEnable
+    when(en) {
+      v := updateNetwork.io.entryNext.valid
+      d := updateNetwork.io.entryNext.bits
+    }
+  }
 }

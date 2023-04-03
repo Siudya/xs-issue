@@ -18,7 +18,7 @@ object GenRtl extends App {
   )
   (new chisel3.stage.ChiselStage).execute(args,
     Seq(
-      ChiselGeneratorAnnotation(() => new IntergerStatusArray(12, 2))
+      ChiselGeneratorAnnotation(() => new IntergerStatusArray(12, 3, 4, 3 ))
     )
   )
 }

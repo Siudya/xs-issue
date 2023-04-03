@@ -97,6 +97,8 @@ class XSBundle extends Bundle{
   val FprEntriesNum = 128
   def GprIdxWidth = log2Ceil(GprEntriesNum)
   def FprIdxWidth = log2Ceil(FprEntriesNum)
+
+  def MaxRegfileIdxWidth = if(GprIdxWidth > FprIdxWidth) GprIdxWidth else FprIdxWidth
   val LpvLength = 4
   val loadUnitNum = 2
 }
@@ -241,6 +243,28 @@ class CtrlSignals extends Bundle {
   val fpu = new FPUCtrlSignals
 }
 
+object RedirectLevel {
+  def flushAfter = "b0".U
+  def flush = "b1".U
+  def apply() = UInt(1.W)
+  // def isUnconditional(level: UInt) = level(1)
+  def flushItself(level: UInt) = level(0)
+  // def isException(level: UInt) = level(1) && level(0)
+}
+class Redirect extends XSBundle {
+  val robIdx = new RobPtr
+  val ftqIdx = new FtqPtr
+  val ftqOffset = UInt(log2Up(32).W)
+  val level = RedirectLevel()
+  val interrupt = Bool()
+
+  val stFtqIdx = new FtqPtr // for load violation predict
+  val stFtqOffset = UInt(log2Up(32).W)
+
+  // def isUnconditional() = RedirectLevel.isUnconditional(level)
+  def flushItself() = RedirectLevel.flushItself(level)
+  // def isException() = RedirectLevel.isException(level)
+}
 //class MicroOp extends CfCtrl {
 //  val srcState = Vec(3, SrcState())
 //  val psrc = Vec(3, UInt(7.W))
@@ -253,6 +277,7 @@ class CtrlSignals extends Bundle {
 //}
 
 class MicroOp extends Bundle {
+  val ctrl = new CtrlSignals
   val payload = UInt(128.W)
   val robIdx = new RobPtr
 }
@@ -260,9 +285,10 @@ class MicroOp extends Bundle {
 abstract class BasicStatusArrayEntry(srcNum:Int, isIntSrc:Boolean) extends XSBundle{
   val psrc = Vec(srcNum, UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W))
   val pdest = UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W)
+  val srcType = Vec(srcNum, SrcType())
+  val srcState = Vec(srcNum, SrcState())
   val rfWen = Bool()
   val fpWen = Bool()
-  val srcState = Vec(srcNum, UInt(2.W))
   val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
   val fuType = FuType()
   val robIdx = new RobPtr
@@ -283,10 +309,14 @@ class FloatStatusArrayEntry extends BasicStatusArrayEntry(3, false){
 
 class SelectInfo extends XSBundle{
   val fuType = FuType()
-  val shouldDeq = Bool()
   val lpv = UInt(LpvLength.W)
-  val pdest = UInt(GprIdxWidth.W)
+  val pdest = UInt(MaxRegfileIdxWidth.W)
   val rfWen = Bool()
   val fpWen = Bool()
   val robPtr = new RobPtr
+}
+
+class WakeUpInfo(withLPV:Boolean) extends XSBundle{
+  val pdest = UInt(MaxRegfileIdxWidth.W)
+  val lpv = UInt(if(withLPV) LpvLength.W else 0.W)
 }
