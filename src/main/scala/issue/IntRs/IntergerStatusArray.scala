@@ -24,31 +24,36 @@ import chisel3.util._
 import issue.RedirectLevel.flushItself
 import issue._
 import xs.utils.Assertion.xs_assert
+
+class IntegerIssueInfoGenerator extends Module{
+  val io = IO(new Bundle{
+    val in = Input(Valid(new IntegerStatusArrayEntry))
+    val out = Output(Valid(new SelectInfo))
+  })
+  private val iv = io.in.valid
+  private val ib = io.in.bits
+  private val readyToIssue = ib.srcState(0) === SrcState.rdy & ib.srcState(1) === SrcState.rdy & !ib.issued
+  io.out.valid := readyToIssue & iv
+  io.out.bits.fuType := ib.fuType
+  io.out.bits.robPtr := ib.robIdx
+  io.out.bits.pdest := ib.pdest
+  io.out.bits.fpWen := ib.fpWen
+  io.out.bits.rfWen := ib.rfWen
+  io.out.bits.lpv.zip(ib.lpv.transpose).foreach({case(o, i) => o := i.reduce(_|_)})
+}
 class IntegerStatusArrayEntry extends BasicStatusArrayEntry(2, true){
   val issued = Bool()
-  def toIssueInfo: Valid[SelectInfo] = {
-    val readyToIssue = srcState(0) === SrcState.rdy & srcState(1) === SrcState.rdy & !issued
-    val res = Wire(Valid(new SelectInfo))
-    res.valid := readyToIssue
-    res.bits.fuType := fuType
-    res.bits.robPtr := robIdx
-    res.bits.lpv := lpv(0) | lpv(1)
-    res.bits.pdest := pdest
-    res.bits.fpWen := fpWen
-    res.bits.rfWen := rfWen
-    res
-  }
 }
 
-class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends Module{
+class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int) extends XSModule{
   val io = IO(new Bundle{
     val entry = Input(Valid(new IntegerStatusArrayEntry))
     val entryNext = Output(Valid(new IntegerStatusArrayEntry))
     val updateEnable = Output(Bool())
     val enq = Input(Valid(new IntegerStatusArrayEntry))
     val issue = Input(Vec(issueWidth, Bool()))
-    val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo(false))))
-    val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new WakeUpInfo(true))))
+    val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
+    val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
     val redirect = Input(Valid(new Redirect))
   })
@@ -61,26 +66,35 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, load
   private val redirectNext = WireInit(io.entry)
 
   //Start of wake up
-  private val pregMatch = io.entry.bits.psrc.map(p => (io.wakeup ++ io.loadEarlyWakeup).map(elm => (elm.bits.pdest === p) && elm.valid))
-  private val specPregMatch = io.entry.bits.psrc.map(p => io.loadEarlyWakeup.map(elm => elm.bits.pdest === p && elm.valid))
-  for((((n, o), v), t) <- miscNext.bits.srcState zip io.entry.bits.srcState zip pregMatch zip io.entry.bits.srcType){
+  private val pregMatch = io.entry.bits.psrc
+    .zip(io.entry.bits.srcType)
+    .map(p => (io.wakeup ++ io.loadEarlyWakeup).map(elm => (elm.bits.pdest === p._1) && elm.valid && p._2 === SrcType.reg))
+  for((n, v) <- miscNext.bits.srcState zip pregMatch){
     when(Cat(v).orR){
-      n := Mux(t === SrcType.reg, SrcState.rdy, o)
-      miscUpdateEn := true.B
+      n := SrcState.rdy
+    }
+  }
+
+  for(((newLpv, regIdx), regType) <- miscNext.bits.lpv.zip(io.entry.bits.psrc).zip(io.entry.bits.srcType)){
+    val shouldUpdate = io.loadEarlyWakeup.map(elm => elm.valid && elm.bits.pdest === regIdx && SrcType.reg === regType)
+    for(((l, v), d) <- newLpv.zip(shouldUpdate).zip(io.loadEarlyWakeup)){
+      when(v){
+        l := d.bits.lpv
+      }
     }
   }
   private val miscUpdateEn0 = pregMatch.map(_.reduce(_|_)).reduce(_|_)
   //End of wake up
 
   //Start of issue and cancel
-  private val shouldBeCancelled = io.earlyWakeUpCancel.zip(io.entry.bits.lpv).map({ case(c, l) => c & l(0)}).reduce(_|_)
+  private val shouldBeCancelled = io.earlyWakeUpCancel.zip(io.entry.bits.lpv.transpose).map({ case(c, l) => l.map(_(0) & c).reduce(_|_)}).reduce(_|_)
   private val shouldBeIssued = Cat(io.issue).orR
   miscNext.bits.issued := Mux(shouldBeCancelled, false.B, Mux(shouldBeIssued, true.B, io.entry.bits.issued))
   private val miscUpdateEn1 = Cat(shouldBeCancelled, shouldBeIssued)
   //End of issue and cancel
 
   //Start of dequeue
-  private val mayNeedReplay = io.entry.bits.lpv.map(_.orR).reduce(_|_)
+  private val mayNeedReplay = io.entry.bits.lpv.map(_.map(_.orR).reduce(_|_)).reduce(_|_)
   when(io.entry.bits.issued & !mayNeedReplay){
     miscNext.valid := false.B
     miscUpdateEn := true.B
@@ -88,10 +102,12 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, load
   //End of dequeue
 
   //Start of LPV shift
-  for((ln,lo) <- miscNext.bits.lpv zip io.entry.bits.lpv){
-    ln := Cat(0.U(1.W), lo(lo.getWidth-1,1))
+  for((ln_outer,lo_outer) <- miscNext.bits.lpv zip io.entry.bits.lpv){
+    for((ln_inner,lo_inner) <- ln_outer zip lo_outer){
+      ln_inner := Cat(0.U(1.W), lo_inner(lo_inner.getWidth-1,1))
+    }
   }
-  private val miscUpdateEn2 = io.entry.bits.lpv.map(_.orR).reduce(_|_)
+  private val miscUpdateEn2 = mayNeedReplay
   //End of deq
 
   //Start of Enqueue
@@ -114,11 +130,12 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, load
   io.entryNext := Mux(enqUpdateEn, enqNext, Mux(shouldBeFlushed, redirectNext, miscNext))
 }
 
-class IntergerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends Module{
+class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends XSModule{
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
 
     val issueInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
+    val allocateInfo = Output(UInt(entryNum.W))
 
     val enq = Input(Valid(new Bundle{
       val addrOH = UInt(entryNum.W)
@@ -126,27 +143,36 @@ class IntergerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUni
     }))
 
     val issue = Input(Vec(issueWidth, Valid(UInt(entryNum.W))))
-    val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo(false))))
-    val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new WakeUpInfo(true))))
+    val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
+    val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
   })
 
   private val statusArray = Reg(Vec(entryNum, new IntegerStatusArrayEntry))
   private val statusArrayValid = RegInit(VecInit(Seq.fill(entryNum)(false.B)))
+  private val statusArrayValidAux = RegInit(VecInit(Seq.fill(entryNum)(false.B)))
 
   //Start of select logic
   for(((issInfo, saEntry), saValid) <- io.issueInfo
     .zip(statusArray)
     .zip(statusArrayValid)){
-    issInfo := Mux(saValid, saEntry.toIssueInfo, 0.U.asTypeOf(saEntry.toIssueInfo))
+    val entryToSelectInfoCvt = Module(new IntegerIssueInfoGenerator)
+    entryToSelectInfoCvt.io.in.valid := saValid
+    entryToSelectInfoCvt.io.in.bits := saEntry
+    issInfo := entryToSelectInfoCvt.io.out
   }
   //End of select logic
 
-  for(((v, d), idx) <- statusArrayValid
+  //Start of allocate logic
+  io.allocateInfo := Cat(statusArrayValidAux.reverse)
+  //End of allocate logic
+
+  for((((v, va), d), idx) <- statusArrayValid
+    .zip(statusArrayValidAux)
     .zip(statusArray)
     .zipWithIndex
   ){
-    val updateNetwork = Module(new IntegerStatusArrayEntryUpdateNetwork(issueWidth, wakeupWidth, loadUnitNum))
+    val updateNetwork = Module(new IntegerStatusArrayEntryUpdateNetwork(issueWidth, wakeupWidth))
     updateNetwork.io.entry.valid := v
     updateNetwork.io.entry.bits := d
     updateNetwork.io.enq.valid := io.enq.valid & io.enq.bits.addrOH(idx)
@@ -159,8 +185,11 @@ class IntergerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUni
 
     val en = updateNetwork.io.updateEnable
     when(en) {
-      v := updateNetwork.io.entryNext.valid
-      d := updateNetwork.io.entryNext.bits
+      v  := updateNetwork.io.entryNext.valid
+      va := updateNetwork.io.entryNext.valid
+      d  := updateNetwork.io.entryNext.bits
     }
   }
+
+  xs_assert(Cat(statusArrayValid) === Cat(statusArrayValidAux))
 }

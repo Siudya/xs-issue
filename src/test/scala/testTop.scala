@@ -1,5 +1,5 @@
 import chisel3.stage.ChiselGeneratorAnnotation
-import issue.IntRs.IntergerStatusArray
+import issue.IntRs.IntegerStatusArray
 import issue.{AllocateNetwork, FuType, SelectNetwork}
 import xs.utils.Assertion
 
@@ -18,7 +18,7 @@ object GenRtl extends App {
   )
   (new chisel3.stage.ChiselStage).execute(args,
     Seq(
-      ChiselGeneratorAnnotation(() => new IntergerStatusArray(12, 3, 4, 3 ))
+      ChiselGeneratorAnnotation(() => new IntegerStatusArray(12, 3, 4, 3 ))
     )
   )
 }

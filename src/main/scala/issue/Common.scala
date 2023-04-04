@@ -92,16 +92,8 @@ object SelImm {
   def X = BitPat("b????")
   def apply() = UInt(4.W)
 }
-class XSBundle extends Bundle{
-  val GprEntriesNum = 128
-  val FprEntriesNum = 128
-  def GprIdxWidth = log2Ceil(GprEntriesNum)
-  def FprIdxWidth = log2Ceil(FprEntriesNum)
 
-  def MaxRegfileIdxWidth = if(GprIdxWidth > FprIdxWidth) GprIdxWidth else FprIdxWidth
-  val LpvLength = 4
-  val loadUnitNum = 2
-}
+
 abstract class Imm(val len: Int) extends Bundle {
   def toImm32(minBits: UInt): UInt = do_toImm32(minBits(len - 1, 0))
   def do_toImm32(minBits: UInt): UInt
@@ -282,6 +274,18 @@ class MicroOp extends Bundle {
   val robIdx = new RobPtr
 }
 
+trait XSParam{
+  val GprEntriesNum = 128
+  val FprEntriesNum = 128
+  def GprIdxWidth = log2Ceil(GprEntriesNum)
+  def FprIdxWidth = log2Ceil(FprEntriesNum)
+  def MaxRegfileIdxWidth = if (GprIdxWidth > FprIdxWidth) GprIdxWidth else FprIdxWidth
+  val LpvLength = 4
+  val loadUnitNum = 3
+}
+class XSBundle extends Bundle with XSParam
+class XSModule extends Module with XSParam
+
 abstract class BasicStatusArrayEntry(srcNum:Int, isIntSrc:Boolean) extends XSBundle{
   val psrc = Vec(srcNum, UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W))
   val pdest = UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W)
@@ -289,34 +293,26 @@ abstract class BasicStatusArrayEntry(srcNum:Int, isIntSrc:Boolean) extends XSBun
   val srcState = Vec(srcNum, SrcState())
   val rfWen = Bool()
   val fpWen = Bool()
-  val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
+  val lpv = Vec(srcNum, Vec(loadUnitNum, UInt(LpvLength.W)))
   val fuType = FuType()
   val robIdx = new RobPtr
-  def toIssueInfo:Valid[SelectInfo]
 }
-class MemoryStatusArrayEntry extends BasicStatusArrayEntry(2, true){
-  def toIssueInfo: Valid[SelectInfo] = {
-    val res = Wire(Valid(new SelectInfo))
-    res
-  }
-}
-class FloatStatusArrayEntry extends BasicStatusArrayEntry(3, false){
-  def toIssueInfo: Valid[SelectInfo] = {
-    val res = Wire(Valid(new SelectInfo))
-    res
-  }
-}
+class MemoryStatusArrayEntry extends BasicStatusArrayEntry(2, true)
+class FloatStatusArrayEntry extends BasicStatusArrayEntry(3, false)
 
 class SelectInfo extends XSBundle{
   val fuType = FuType()
-  val lpv = UInt(LpvLength.W)
+  val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
   val pdest = UInt(MaxRegfileIdxWidth.W)
   val rfWen = Bool()
   val fpWen = Bool()
   val robPtr = new RobPtr
 }
 
-class WakeUpInfo(withLPV:Boolean) extends XSBundle{
+class BasicWakeupInfo extends XSBundle{
   val pdest = UInt(MaxRegfileIdxWidth.W)
-  val lpv = UInt(if(withLPV) LpvLength.W else 0.W)
+}
+class WakeUpInfo extends BasicWakeupInfo
+class EarlyWakeUpInfo extends BasicWakeupInfo{
+  val lpv = UInt(LpvLength.W)
 }
