@@ -37,7 +37,7 @@ class IntegerIssueInfoGenerator extends Module{
   io.out.bits.fuType := ib.fuType
   io.out.bits.robPtr := ib.robIdx
   io.out.bits.pdest := ib.pdest
-  io.out.bits.fpWen := ib.fpWen
+  io.out.bits.fpWen := false.B
   io.out.bits.rfWen := ib.rfWen
   io.out.bits.lpv.zip(ib.lpv.transpose).foreach({case(o, i) => o := i.reduce(_|_)})
 }

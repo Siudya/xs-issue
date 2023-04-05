@@ -270,6 +270,9 @@ class Redirect extends XSBundle {
 
 class MicroOp extends Bundle {
   val ctrl = new CtrlSignals
+  val srcState = Vec(3, SrcState())
+  val psrc = Vec(3, UInt(7.W))
+  val pdest = UInt(7.W)
   val payload = UInt(128.W)
   val robIdx = new RobPtr
 }
@@ -291,10 +294,10 @@ abstract class BasicStatusArrayEntry(srcNum:Int, isIntSrc:Boolean) extends XSBun
   val pdest = UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W)
   val srcType = Vec(srcNum, SrcType())
   val srcState = Vec(srcNum, SrcState())
-  val rfWen = Bool()
-  val fpWen = Bool()
   val lpv = Vec(srcNum, Vec(loadUnitNum, UInt(LpvLength.W)))
   val fuType = FuType()
+  val rfWen = Bool()
+  val fpWen = Bool()
   val robIdx = new RobPtr
 }
 class MemoryStatusArrayEntry extends BasicStatusArrayEntry(2, true)
@@ -316,3 +319,14 @@ class WakeUpInfo extends BasicWakeupInfo
 class EarlyWakeUpInfo extends BasicWakeupInfo{
   val lpv = UInt(LpvLength.W)
 }
+
+case class RsParam
+(
+  val entriesNum:Int = 48,
+  val wakeUpPortNum:Int = 4,
+  val loadUnitNum:Int = 2,
+  val issuePortFuTypes:Seq[(Int, UInt)],
+
+  //Unchangeable parameters
+  val bankNum:Int = 4
+)

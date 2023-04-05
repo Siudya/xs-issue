@@ -109,7 +109,7 @@ class SwitchNetwork[T <: Data](gen:T, channelNum:Int) extends Module{
   io.out(3) := switchList(5).io.out(1)
 }
 
-class randomizationNetwork[T <: Data](gen:T, channelNum:Int) extends Module{
+class RandomizationNetwork[T <: Data](gen:T, channelNum:Int) extends Module{
   val io = IO(new Bundle {
     val enqFire = Input(Bool())
     val in = Input(Vec(channelNum,gen))
@@ -123,7 +123,7 @@ class randomizationNetwork[T <: Data](gen:T, channelNum:Int) extends Module{
   io.out := switchNetwork.io.out
 }
 
-class squeezeCodeRom(addrWidth:Int, dataWidth:Int) extends Module{
+class SqueezeCodeRom(addrWidth:Int, dataWidth:Int) extends Module{
   require(addrWidth == 4 && dataWidth == 6)
   val io = IO(new Bundle{
     val addr = Input(UInt(addrWidth.W))
@@ -160,7 +160,7 @@ class SqueezeNetwork[T <: Valid[K], K <: Data](gen:T, channelNum:Int) extends Mo
     val out = Output(Vec(channelNum, gen))
   })
   private val ctrlCode = Wire(UInt(ctrlCodeWidth.W))
-  private val ctrlCodeRom = Module(new squeezeCodeRom(channelNum, ctrlCodeWidth))
+  private val ctrlCodeRom = Module(new SqueezeCodeRom(channelNum, ctrlCodeWidth))
   private val switchNetwork = Module(new SwitchNetwork(gen, channelNum))
   ctrlCodeRom.io.addr := Cat(io.in.map(_.valid).reverse)
   ctrlCode := ctrlCodeRom.io.data
@@ -224,7 +224,7 @@ class AllocateNetwork(bankNum:Int, entryNumPerBank:Int) extends Module{
     res
   })
 
-  private val randomizer = Module(new randomizationNetwork(Valid(UInt(bankIdxWidth.W)), bankNum))
+  private val randomizer = Module(new RandomizationNetwork(Valid(UInt(bankIdxWidth.W)), bankNum))
   randomizer.io.enqFire := io.enqFromDispatch.map(_.fire).reduce(_|_)
   for((s,m) <- (randomizer.io.in zip bankIdxList)){s := m}
 
