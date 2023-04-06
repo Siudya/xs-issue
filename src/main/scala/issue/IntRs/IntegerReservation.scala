@@ -75,8 +75,14 @@ class IntegerReservation(param:RsParam) extends XSModule{
       val bn = param.bankNum / iss.length
       val rbAddrPortsForThisPort = rbIssAddrPorts.slice(portIdx * bn, portIdx * bn + bn)
       val rbDataPortsForThisPort = rbIssDataPorts.slice(portIdx * bn, portIdx * bn + bn)
+      val selectResps = sn.io.issueInfo(portIdx)
       issueBundle.valid := Cat(rbDataPortsForThisPort.map(_.valid)).orR
       issueBundle.bits := Mux1H(rbDataPortsForThisPort.map(elm => (elm.valid, elm.bits)))
+      issueBundle.bits.robIdx := selectResps.bits.info.robPtr
+      issueBundle.bits.ctrl.rfWen := selectResps.bits.info.rfWen
+      issueBundle.bits.ctrl.rfWen := selectResps.bits.info.fpWen
+      issueBundle.bits.pdest := selectResps.bits.info.pdest
+      issueBundle.bits.ctrl.fuType := selectResps.bits.info.fuType
       val successSelect = !issR_elm.valid || iss_elm.fire
       iss_elm.valid := issR_elm.valid
       iss_elm.bits := issR_elm.bits

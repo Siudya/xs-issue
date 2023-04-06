@@ -268,7 +268,7 @@ class Redirect extends XSBundle {
 //  val eliminatedMove = Bool()
 //}
 
-class MicroOp extends Bundle {
+class MicroOp extends XSBundle {
   val ctrl = new CtrlSignals
   val srcState = Vec(3, SrcState())
   val psrc = Vec(3, UInt(7.W))
