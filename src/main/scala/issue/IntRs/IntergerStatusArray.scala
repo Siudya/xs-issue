@@ -130,7 +130,7 @@ class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnit
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
 
-    val issueInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
+    val selectInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
     val allocateInfo = Output(UInt(entryNum.W))
 
     val enq = Input(Valid(new Bundle{
@@ -149,13 +149,13 @@ class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnit
   private val statusArrayValidAux = RegInit(VecInit(Seq.fill(entryNum)(false.B)))
 
   //Start of select logic
-  for(((issInfo, saEntry), saValid) <- io.issueInfo
+  for(((selInfo, saEntry), saValid) <- io.selectInfo
     .zip(statusArray)
     .zip(statusArrayValid)){
     val entryToSelectInfoCvt = Module(new IntegerIssueInfoGenerator)
     entryToSelectInfoCvt.io.in.valid := saValid
     entryToSelectInfoCvt.io.in.bits := saEntry
-    issInfo := entryToSelectInfoCvt.io.out
+    selInfo := entryToSelectInfoCvt.io.out
   }
   //End of select logic
 

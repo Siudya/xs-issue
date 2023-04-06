@@ -42,7 +42,7 @@ class IntegerReservationStationBank(entryNum:Int, issueWidth:Int, wakeupWidth:In
   val io = IO(new Bundle {
     val redirect = Input(Valid(new Redirect))
 
-    val issueInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
+    val selectInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
     val allocateInfo = Output(UInt(entryNum.W))
 
     val enq = Input(Valid(new Bundle {
@@ -65,7 +65,7 @@ class IntegerReservationStationBank(entryNum:Int, issueWidth:Int, wakeupWidth:In
 
   enqToStatusCvt.io.in := io.enq.bits.data
   statusArray.io.redirect := io.redirect
-  io.issueInfo := statusArray.io.issueInfo
+  io.selectInfo := statusArray.io.selectInfo
   io.allocateInfo := statusArray.io.allocateInfo
   statusArray.io.enq.valid := io.enq.valid
   statusArray.io.enq.bits.addrOH := io.enq.bits.addrOH

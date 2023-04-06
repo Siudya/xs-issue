@@ -1,24 +1,22 @@
 import chisel3.stage.ChiselGeneratorAnnotation
-import issue.IntRs.{IntegerReservationStationBank, IntegerStatusArray}
-import issue.{AllocateNetwork, FuType, PayloadArray, SelectNetwork}
+import issue.IntRs.IntegerReservation
+import issue.{FuType, RsParam}
 import xs.utils.Assertion
 
 object GenRtl extends App {
-  val fuTypeList = Seq(FuType.mul, FuType.div)
+  val p = RsParam(
+    16,
+    3,
+    Seq(
+      (1, Seq(FuType.jmp, FuType.csr, FuType.fence, FuType.i2f)),
+      (4, Seq(FuType.alu, FuType.bku)),
+      (2, Seq(FuType.div, FuType.mul))
+    )
+  )
   Assertion.set_enable(false)
   (new chisel3.stage.ChiselStage).execute(args,
     Seq(
-      ChiselGeneratorAnnotation(() => new AllocateNetwork(4, 12))
-    )
-  )
-  (new chisel3.stage.ChiselStage).execute(args,
-    Seq(
-      ChiselGeneratorAnnotation(() => new SelectNetwork(4, 4, 2, fuTypeList))
-    )
-  )
-  (new chisel3.stage.ChiselStage).execute(args,
-    Seq(
-      ChiselGeneratorAnnotation(() => new IntegerReservationStationBank(12, 3, 4, 3 ))
+      ChiselGeneratorAnnotation(() => new IntegerReservation(p))
     )
   )
 }

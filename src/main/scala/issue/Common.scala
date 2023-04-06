@@ -284,7 +284,7 @@ trait XSParam{
   def FprIdxWidth = log2Ceil(FprEntriesNum)
   def MaxRegfileIdxWidth = if (GprIdxWidth > FprIdxWidth) GprIdxWidth else FprIdxWidth
   val LpvLength = 4
-  val loadUnitNum = 3
+  val loadUnitNum = 2
 }
 class XSBundle extends Bundle with XSParam
 class XSModule extends Module with XSParam
@@ -322,11 +322,10 @@ class EarlyWakeUpInfo extends BasicWakeupInfo{
 
 case class RsParam
 (
-  val entriesNum:Int = 48,
-  val wakeUpPortNum:Int = 4,
-  val loadUnitNum:Int = 2,
-  val issuePortFuTypes:Seq[(Int, UInt)],
+  entriesNum:Int = 48,
+  wakeUpPortNum:Int = 4,
+  issuePortFuTypes:Seq[(Int, Seq[UInt])],
 
   //Unchangeable parameters
-  val bankNum:Int = 4
+  bankNum:Int = 4
 )
