@@ -1,5 +1,5 @@
 import chisel3.stage.ChiselGeneratorAnnotation
-import issue.IntRs.IntegerReservation
+import issue.IntRs.IntegerReservationStation
 import issue.{FuType, RsParam}
 import xs.utils.Assertion
 
@@ -16,7 +16,7 @@ object GenRtl extends App {
   Assertion.set_enable(false)
   (new chisel3.stage.ChiselStage).execute(args,
     Seq(
-      ChiselGeneratorAnnotation(() => new IntegerReservation(p))
+      ChiselGeneratorAnnotation(() => new IntegerReservationStation(p))
     )
   )
 }

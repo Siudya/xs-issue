@@ -199,7 +199,7 @@ class SqueezeNetwork[T <: Valid[K], K <: Data](gen:T, channelNum:Int) extends Mo
   * }}}
   */
 
-class AllocateNetwork(bankNum:Int, entryNumPerBank:Int) extends Module{
+class AllocateNetwork(bankNum:Int, entryNumPerBank:Int, name:Option[String] = None) extends Module{
   private val entryIdxOHWidth = entryNumPerBank
   private val bankIdxWidth = log2Ceil(bankNum)
   val io = IO(new Bundle {
@@ -210,6 +210,7 @@ class AllocateNetwork(bankNum:Int, entryNumPerBank:Int) extends Module{
       val addrOH = UInt(entryIdxOHWidth.W)
     }))
   })
+  override val desiredName:String = name.getOrElse("AllocateNetwork")
 
   private val entriesEmptyBitVecList = io.entriesValidBitVecList.map(~_)
   private val entryIdxList = entriesEmptyBitVecList.map({ emptyBitVec =>

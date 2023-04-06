@@ -98,13 +98,14 @@ class Selector(bankNum:Int, entryNum:Int, inputWidth:Int) extends Module{
   * }}}
 */
 
-class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt]) extends Module {
+class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt], name:Option[String] = None) extends Module {
   require(issueNum <= bankNum && 0 < issueNum && bankNum % issueNum == 0, "Illegal number of issue ports are supported now!")
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
     val selectInfo = Input(Vec(bankNum,Vec(entryNum, Valid(new SelectInfo))))
     val issueInfo = Output(Vec(issueNum, Valid(new SelectResp(bankNum, entryNum))))
   })
+  override val desiredName:String = name.getOrElse("SelectNetwork")
 
   private val issueValidBitVecList = io.selectInfo.map(_.map(info => info.valid & (Cat(fuTypeList.map(_ === info.bits.fuType)).orR)))
   private val issueDataVecList = io.selectInfo.map(_.map(_.bits))

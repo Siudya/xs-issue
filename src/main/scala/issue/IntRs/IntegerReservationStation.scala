@@ -2,7 +2,7 @@ package issue.IntRs
 import chisel3._
 import chisel3.util._
 import issue._
-class IntegerReservation(param:RsParam) extends XSModule{
+class IntegerReservationStation(param:RsParam) extends XSModule{
   require(param.bankNum == 4)
   param.issuePortFuTypes.foreach(elm => require(param.bankNum % elm._1 == 0))
   param.issuePortFuTypes.foreach(elm => require(elm._1 >= 1))
@@ -35,7 +35,7 @@ class IntegerReservation(param:RsParam) extends XSModule{
     mod.io.earlyWakeUpCancel := io.earlyWakeUpCancel
     mod
   })
-  private val allocateNetwork = Module(new AllocateNetwork(param.bankNum, entriesNumPerBank))
+  private val allocateNetwork = Module(new AllocateNetwork(param.bankNum, entriesNumPerBank, Some("IntegerAllocateNetwork")))
   private val selectNetworkSeq = param.issuePortFuTypes.map(elm => {
     val mod = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, elm._1, elm._2))
     mod.io.redirect := io.redirect
