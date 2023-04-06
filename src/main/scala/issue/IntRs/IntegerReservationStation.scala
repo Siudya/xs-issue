@@ -11,7 +11,6 @@ class IntegerReservationStation(param:RsParam) extends XSModule{
   private val issueNumForEachFu = param.issuePortFuTypes.map(_._1)
   private val internalWakeupNum = param.issuePortFuTypes.filterNot(_._2.contains(FuType.jmp)).map(_._1).sum
   private val entriesNumPerBank = param.entriesNum / param.bankNum
-  private val issuePortNum = param.issuePortFuTypes.map(_._1).sum
   private val specWakupPortNum = param.issuePortFuTypes.filter(_._2.contains(FuType.alu)).map(_._1).sum
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
@@ -20,7 +19,7 @@ class IntegerReservationStation(param:RsParam) extends XSModule{
     val wakeup = Input(Vec(param.wakeUpPortNum, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
-    val specWakeup = Output(Vec(specWakupPortNum, Valid(new EarlyWakeUpInfo)))
+    val specWakeup = Output(Vec(specWakupPortNum, Valid(new WakeUpInfo)))
   })
 
   private val internalWakeup = Wire(Vec(internalWakeupNum, Valid(new WakeUpInfo)))
@@ -66,9 +65,13 @@ class IntegerReservationStation(param:RsParam) extends XSModule{
   private val issRegs = Seq.tabulate(issueTypeNum)(idx =>
     RegInit(VecInit(Seq.tabulate(issueNumForEachFu(idx))(_ => 0.U.asTypeOf(Valid(new MicroOp)))))
   )
+  private val specWakeupInfo = Seq.tabulate(issueTypeNum)(idx =>
+    Wire(Vec(issueNumForEachFu(idx), Valid(new WakeUpInfo)))
+  )
+  Queue
 
-  for((((iss, issR), sn), fuIdx) <- io.issue.zip(issRegs).zip(selectNetworkSeq).zipWithIndex){
-    for(((iss_elm, issR_elm), portIdx) <- iss.zip(issR).zipWithIndex){
+  for(((((iss, issR), sn), wkp), fuIdx) <- io.issue.zip(issRegs).zip(selectNetworkSeq).zip(specWakeupInfo).zipWithIndex){
+    for((((iss_elm, issR_elm),wkp_elm), portIdx) <- iss.zip(issR).zip(wkp).zipWithIndex){
       val issueBundle = Wire(Valid(new MicroOp))
       val rbIssAddrPorts = rsBankSeq.map(_.io.issueAddr(fuIdx))
       val rbIssDataPorts = rsBankSeq.map(_.io.issueData(fuIdx))
@@ -83,19 +86,22 @@ class IntegerReservationStation(param:RsParam) extends XSModule{
       issueBundle.bits.ctrl.rfWen := selectResps.bits.info.fpWen
       issueBundle.bits.pdest := selectResps.bits.info.pdest
       issueBundle.bits.ctrl.fuType := selectResps.bits.info.fuType
-      val successSelect = !issR_elm.valid || iss_elm.fire
+      val issueRegEmpty = !issR_elm.valid || iss_elm.fire
       iss_elm.valid := issR_elm.valid
       iss_elm.bits := issR_elm.bits
 
-      when(successSelect){
+      when(issueRegEmpty){
         issR_elm.valid := issueBundle.valid
       }
-      when(successSelect && issueBundle.valid){
+      when(issueRegEmpty && issueBundle.valid){
         issR_elm.bits := issueBundle.bits
       }
+      wkp_elm.valid := issueRegEmpty && issueBundle.valid
+      wkp_elm.bits.pdest := selectResps.bits.info.pdest
+      wkp_elm.bits.lpv := selectResps.bits.info.lpv
 
       rbAddrPortsForThisPort.zipWithIndex.foreach({case(rb,bidx) =>
-        rb.valid := sn.io.issueInfo.head.valid & sn.io.issueInfo.head.bits.bankIdxOH(bidx + portIdx * bn) & successSelect
+        rb.valid := sn.io.issueInfo.head.valid & sn.io.issueInfo.head.bits.bankIdxOH(bidx + portIdx * bn) & issueRegEmpty
         rb.bits := sn.io.issueInfo.head.bits.entryIdxOH
       })
     }

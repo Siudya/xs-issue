@@ -289,7 +289,7 @@ trait XSParam{
 class XSBundle extends Bundle with XSParam
 class XSModule extends Module with XSParam
 
-abstract class BasicStatusArrayEntry(srcNum:Int, isIntSrc:Boolean) extends XSBundle{
+abstract class BasicStatusArrayEntry(val srcNum:Int, isIntSrc:Boolean) extends XSBundle{
   val psrc = Vec(srcNum, UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W))
   val pdest = UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W)
   val srcType = Vec(srcNum, SrcType())
@@ -315,7 +315,9 @@ class SelectInfo extends XSBundle{
 class BasicWakeupInfo extends XSBundle{
   val pdest = UInt(MaxRegfileIdxWidth.W)
 }
-class WakeUpInfo extends BasicWakeupInfo
+class WakeUpInfo extends BasicWakeupInfo{
+  val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
+}
 class EarlyWakeUpInfo extends BasicWakeupInfo{
   val lpv = UInt(LpvLength.W)
 }
