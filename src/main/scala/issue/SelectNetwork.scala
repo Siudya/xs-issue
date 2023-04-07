@@ -131,7 +131,7 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt
     })
   }
   for((outPort,driver) <- io.issueInfo zip selectorSeq){
-    val shouldBeSuppressed = io.redirect.valid && io.redirect.bits.shouldBeFlushed(driver.io.out.bits.info.robPtr)
+    val shouldBeSuppressed = driver.io.out.bits.info.robPtr.needFlush(io.redirect)
     outPort.valid := driver.io.out.valid && !shouldBeSuppressed
     outPort.bits.bankIdxOH := driver.io.out.bits.bankIdxOH
     outPort.bits.entryIdxOH := driver.io.out.bits.entryIdxOH

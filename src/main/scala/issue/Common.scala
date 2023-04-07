@@ -6,7 +6,12 @@ import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, SignExt, ZeroExt}
 class FtqPtr extends CircularQueuePtr[FtqPtr](64)
 class LqPtr extends CircularQueuePtr[LqPtr](80)
 class SqPtr extends CircularQueuePtr[SqPtr](64)
-class RobPtr extends CircularQueuePtr[RobPtr](160) with HasCircularQueuePtrHelper
+class RobPtr extends CircularQueuePtr[RobPtr](160) with HasCircularQueuePtrHelper{
+  def needFlush(redirect: Valid[Redirect]): Bool = {
+    redirect.valid && redirect.bits.shouldBeFlushed(this)
+  }
+  def needFlush(redirect: Seq[Valid[Redirect]]): Bool = VecInit(redirect.map(needFlush)).asUInt.orR
+}
 
 object SrcState {
   def busy = "b0".U

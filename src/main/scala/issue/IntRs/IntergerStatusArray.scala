@@ -89,7 +89,7 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:I
   //End of issue and cancel
 
   //Start of dequeue and redirect
-  private val shouldBeFlushed = io.entry.valid & io.redirect.valid & io.redirect.bits.shouldBeFlushed(io.entry.bits.robIdx)
+  private val shouldBeFlushed = io.entry.valid & io.entry.bits.robIdx.needFlush(io.redirect)
   private val mayNeedReplay = io.entry.bits.lpv.map(_.map(_.orR).reduce(_|_)).reduce(_|_)
   private val miscUpdateEnDequeueOrRedirect = (io.entry.bits.issued && !mayNeedReplay) || shouldBeFlushed
   when(miscUpdateEnDequeueOrRedirect) {
@@ -118,7 +118,7 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:I
 
   //Start of Enqueue
   enqNext.bits := io.enq.bits
-  private val enqShouldBeSuppressed = io.redirect.valid & io.redirect.bits.shouldBeFlushed(io.enq.bits.robIdx)
+  private val enqShouldBeSuppressed = io.enq.bits.robIdx.needFlush(io.redirect)
   enqNext.valid := !enqShouldBeSuppressed && io.enq.valid
   enqUpdateEn := enqNext.valid
   //End of Enqueue
