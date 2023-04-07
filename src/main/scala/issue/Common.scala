@@ -256,6 +256,7 @@ class Redirect extends XSBundle {
   // def isUnconditional() = RedirectLevel.isUnconditional(level)
   def flushItself() = RedirectLevel.flushItself(level)
   // def isException() = RedirectLevel.isException(level)
+  def shouldBeFlushed(in:RobPtr) = Mux(flushItself(), in <= robIdx, in < robIdx)
 }
 //class MicroOp extends CfCtrl {
 //  val srcState = Vec(3, SrcState())
@@ -275,6 +276,7 @@ class MicroOp extends XSBundle {
   val pdest = UInt(7.W)
   val payload = UInt(128.W)
   val robIdx = new RobPtr
+  val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
 }
 
 trait XSParam{

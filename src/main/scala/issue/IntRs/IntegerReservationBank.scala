@@ -11,14 +11,6 @@ class IntegerPayloadEntryEncoder extends Module{
   io.out := io.in
 }
 
-class IntegerPayloadEntryDecoder extends Module{
-  val io = IO(new Bundle{
-    val in = Input(new MicroOp)
-    val out = Output(new MicroOp)
-  })
-  io.out := io.in
-}
-
 class MicroOpToIntegerStatusArrayEntry extends Module{
   val io = IO(new Bundle{
     val in = Input(new MicroOp)
@@ -60,7 +52,6 @@ class IntegerReservationStationBank(entryNum:Int, issueWidth:Int, wakeupWidth:In
   private val enqToStatusCvt = Module(new MicroOpToIntegerStatusArrayEntry)
   private val statusArray = Module(new IntegerStatusArray(entryNum, issueWidth, wakeupWidth, loadUnitNum))
   private val enqToPayloadCvt = Module(new IntegerPayloadEntryEncoder)
-  private val payloadToDeqCvts = io.issueAddr.indices.map(i => Module(new IntegerPayloadEntryDecoder))
   private val payloadArray = Module(new PayloadArray(entryNum, issueWidth, "IntegerPayloadArray"))
 
   enqToStatusCvt.io.in := io.enq.bits.data
@@ -79,11 +70,10 @@ class IntegerReservationStationBank(entryNum:Int, issueWidth:Int, wakeupWidth:In
   payloadArray.io.write.addr := io.enq.bits.addrOH
   enqToPayloadCvt.io.in := io.enq.bits.data
   payloadArray.io.write.data := enqToPayloadCvt.io.out
-  payloadArray.io.read.zip(io.issueAddr).zip(io.issueData).zip(payloadToDeqCvts).foreach({
-    case(((port, iAddr), iData), iCvt) =>{
+  payloadArray.io.read.zip(io.issueAddr).zip(io.issueData).foreach({
+    case((port, iAddr), iData) =>{
       port.addr := iAddr.bits
-      iCvt.io.in := port.data
-      iData.bits := iCvt.io.out
+      iData.bits := port.data
       iData.valid := iAddr.valid
     }
   })

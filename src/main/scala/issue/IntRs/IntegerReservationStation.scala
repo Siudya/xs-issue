@@ -86,6 +86,7 @@ class IntegerReservationStation(param:RsParam) extends XSModule{
       issueBundle.bits.ctrl.rfWen := selectResps.bits.info.fpWen
       issueBundle.bits.pdest := selectResps.bits.info.pdest
       issueBundle.bits.ctrl.fuType := selectResps.bits.info.fuType
+      issueBundle.bits.lpv := selectResps.bits.info.lpv
       val issueRegEmpty = !issR_elm.valid || iss_elm.fire
       iss_elm.valid := issR_elm.valid
       iss_elm.bits := issR_elm.bits
