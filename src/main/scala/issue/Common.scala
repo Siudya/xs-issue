@@ -284,6 +284,19 @@ class MicroOp extends XSBundle {
   val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
 }
 
+class ExuInput(srcNum:Int) extends XSBundle {
+  val uop = new MicroOp
+  val src = Vec(3, UInt(XLEN.W))
+}
+
+class ExuOutput extends XSBundle {
+  val uop = new MicroOp
+  val data = UInt(XLEN.W)
+  val fflags = UInt(5.W)
+  val redirectValid = Bool()
+  val redirect = new Redirect
+}
+
 trait XSParam{
   val GprEntriesNum = 128
   val FprEntriesNum = 128
@@ -292,6 +305,7 @@ trait XSParam{
   def MaxRegfileIdxWidth = if (GprIdxWidth > FprIdxWidth) GprIdxWidth else FprIdxWidth
   val LpvLength = 4
   val loadUnitNum = 2
+  val XLEN = 64
 }
 class XSBundle extends Bundle with XSParam
 class XSModule extends Module with XSParam
@@ -337,4 +351,33 @@ case class RsParam
 
   //Unchangeable parameters
   bankNum:Int = 4
+)
+
+case class FuConfig
+(
+  name: String,
+  fuSel: MicroOp => Bool,
+  fuType: UInt,
+  numIntSrc: Int,
+  numFpSrc: Int,
+  writeIntRf: Boolean,
+  writeFpRf: Boolean,
+  writeFflags: Boolean = false,
+  latency: Int
+) {
+  def srcCnt: Int = math.max(numIntSrc, numFpSrc)
+}
+
+case class ExuConfig
+(
+  name: String,
+  blockName: String, // NOTE: for perf counter
+  fuConfigs: Seq[FuConfig],
+  srcNum:Int
+)
+
+case class DispatchParam
+(
+  name: String,
+  width: Int
 )
