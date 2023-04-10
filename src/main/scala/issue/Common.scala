@@ -286,7 +286,7 @@ class MicroOp extends XSBundle {
 
 class ExuInput(srcNum:Int) extends XSBundle {
   val uop = new MicroOp
-  val src = Vec(3, UInt(XLEN.W))
+  val src = Vec(srcNum, UInt(XLEN.W))
 }
 
 class ExuOutput extends XSBundle {
@@ -306,6 +306,9 @@ trait XSParam{
   val LpvLength = 4
   val loadUnitNum = 2
   val XLEN = 64
+  val intExuNum = 7
+  val memExuNum = 6
+  val floatExuNum = 6
 }
 class XSBundle extends Bundle with XSParam
 class XSModule extends Module with XSParam
@@ -374,7 +377,9 @@ case class ExuConfig
   blockName: String, // NOTE: for perf counter
   fuConfigs: Seq[FuConfig],
   srcNum:Int
-)
+){
+  def hasFastWakeup = fuConfigs.map(_.latency).max != Int.MaxValue
+}
 
 case class DispatchParam
 (
