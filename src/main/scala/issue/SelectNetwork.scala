@@ -21,7 +21,8 @@
 package issue
 import chisel3._
 import chisel3.util._
-import issue.RedirectLevel.flushItself
+import common.{ExuConfig, ExuType, Redirect, SelectInfo, XSModule}
+import common.RedirectLevel.flushItself
 import xs.utils.Assertion.xs_assert
 import xs.utils.ParallelOperation
 
@@ -98,12 +99,15 @@ class Selector(bankNum:Int, entryNum:Int, inputWidth:Int) extends Module{
   * }}}
 */
 
-class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt], name:Option[String] = None) extends Module {
+class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name:Option[String] = None) extends XSModule {
   require(issueNum <= bankNum && 0 < issueNum && bankNum % issueNum == 0, "Illegal number of issue ports are supported now!")
+  private val mayBeBlocked = ExuType.maybeBlockType.contains(cfg.exuType)
+  private val fuTypeList = cfg.fuConfigs.map(_.fuType)
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
     val selectInfo = Input(Vec(bankNum,Vec(entryNum, Valid(new SelectInfo))))
     val issueInfo = Output(Vec(issueNum, Valid(new SelectResp(bankNum, entryNum))))
+    val tokenRelease = if(mayBeBlocked) Some(Input(Vec(issueNum, Valid(UInt(MaxRegfileIdxWidth.W))))) else None
   })
   override val desiredName:String = name.getOrElse("SelectNetwork")
 
@@ -130,9 +134,22 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, fuTypeList:Seq[UInt
       inPort.bits.entryIdxOH := driver._2
     })
   }
-  for((outPort,driver) <- io.issueInfo zip selectorSeq){
+  for(((outPort,driver), idx) <- io.issueInfo.zip(selectorSeq).zipWithIndex){
     val shouldBeSuppressed = driver.io.out.bits.info.robPtr.needFlush(io.redirect)
-    outPort.valid := driver.io.out.valid && !shouldBeSuppressed
+    val tokenAllocator = if(mayBeBlocked) Some(Module(new IssueTokenAllocator(MaxRegfileIdxWidth, cfg.fuConfigs.length))) else None
+    val outValid = Wire(Bool())
+    if(mayBeBlocked){
+      tokenAllocator.get.io.redirect := io.redirect
+      tokenAllocator.get.io.release := io.tokenRelease.get(idx)
+      tokenAllocator.get.io.request.valid := driver.io.out.valid && !shouldBeSuppressed
+      tokenAllocator.get.io.request.bits.pdest := driver.io.out.bits.info.pdest
+      tokenAllocator.get.io.request.bits.robPtr := driver.io.out.bits.info.robPtr
+      outValid := tokenAllocator.get.io.grant
+    } else {
+      outValid := driver.io.out.valid && !shouldBeSuppressed
+    }
+
+    outPort.valid := outValid
     outPort.bits.bankIdxOH := driver.io.out.bits.bankIdxOH
     outPort.bits.entryIdxOH := driver.io.out.bits.entryIdxOH
     outPort.bits.info := driver.io.out.bits.info

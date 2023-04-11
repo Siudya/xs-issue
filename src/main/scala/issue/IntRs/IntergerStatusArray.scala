@@ -21,7 +21,8 @@
 package issue.IntRs
 import chisel3._
 import chisel3.util._
-import issue.RedirectLevel.flushItself
+import common.RedirectLevel.flushItself
+import common.{BasicStatusArrayEntry, EarlyWakeUpInfo, Redirect, SelectInfo, SrcState, SrcType, WakeUpInfo, XSModule}
 import issue._
 import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight

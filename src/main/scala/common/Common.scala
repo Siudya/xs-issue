@@ -1,4 +1,5 @@
-package issue
+package common
+
 import chisel3._
 import chisel3.util._
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, SignExt, ZeroExt}
@@ -215,7 +216,7 @@ class FPUCtrlSignals extends Bundle {
   val rm = UInt(3.W)
 }
 
-class CfCtrl extends Bundle {
+class CfCtrl extends XSBundle {
   val cf = new CtrlFlow
   val ctrl = new CtrlSignals
 }
@@ -248,12 +249,18 @@ object RedirectLevel {
   def flushItself(level: UInt) = level(0)
   // def isException(level: UInt) = level(1) && level(0)
 }
+class CfiUpdateInfo extends XSBundle{
+  val predTaken = Bool()
+  val taken = Bool()
+  val isMisPred = Bool()
+}
 class Redirect extends XSBundle {
   val robIdx = new RobPtr
   val ftqIdx = new FtqPtr
   val ftqOffset = UInt(log2Up(32).W)
   val level = RedirectLevel()
   val interrupt = Bool()
+  val cfiUpdate = new CfiUpdateInfo
 
   val stFtqIdx = new FtqPtr // for load violation predict
   val stFtqOffset = UInt(log2Up(32).W)
@@ -274,13 +281,14 @@ class Redirect extends XSBundle {
 //  val eliminatedMove = Bool()
 //}
 
-class MicroOp extends XSBundle {
-  val ctrl = new CtrlSignals
+class MicroOp extends CfCtrl {
   val srcState = Vec(3, SrcState())
-  val psrc = Vec(3, UInt(7.W))
-  val pdest = UInt(7.W)
-  val payload = UInt(128.W)
+  val psrc = Vec(3, UInt(MaxRegfileIdxWidth.W))
+  val pdest = UInt(MaxRegfileIdxWidth.W)
+  val old_pdest = UInt(MaxRegfileIdxWidth.W)
   val robIdx = new RobPtr
+  val lqIdx = new LqPtr
+  val sqIdx = new SqPtr
   val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
 }
 
@@ -338,6 +346,7 @@ class SelectInfo extends XSBundle{
 
 class BasicWakeupInfo extends XSBundle{
   val pdest = UInt(MaxRegfileIdxWidth.W)
+  val robPtr = new RobPtr
 }
 class WakeUpInfo extends BasicWakeupInfo{
   val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
@@ -350,7 +359,6 @@ case class RsParam
 (
   entriesNum:Int = 48,
   wakeUpPortNum:Int = 4,
-  issuePortFuTypes:Seq[(Int, Seq[UInt])],
 
   //Unchangeable parameters
   bankNum:Int = 4
@@ -370,15 +378,32 @@ case class FuConfig
 ) {
   def srcCnt: Int = math.max(numIntSrc, numFpSrc)
 }
-
+object ExuType{
+  def jmp = 0
+  def alu = 1
+  def mul = 2
+  def div = 3
+  def load = 4
+  def sta = 5
+  def std = 6
+  def fmisc = 7
+  def fmac = 8
+  def intType: Seq[Int] = Seq(jmp, alu, mul, div)
+  def memType: Seq[Int] = Seq(load, sta, std)
+  def fpType: Seq[Int] = Seq(fmisc, fmac)
+  def maybeBlockType:Seq[Int] = Seq(div, fmac, fmisc)
+}
 case class ExuConfig
 (
   name: String,
+  id: Int,
   blockName: String, // NOTE: for perf counter
   fuConfigs: Seq[FuConfig],
-  srcNum:Int
+  exuType:Int,
+  srcNum:Int,
 ){
   def hasFastWakeup = fuConfigs.map(_.latency).max != Int.MaxValue
+  def latency = fuConfigs.map(_.latency).max
 }
 
 case class DispatchParam

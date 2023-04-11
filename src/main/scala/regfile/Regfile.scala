@@ -1,14 +1,14 @@
 package regfile
 import chisel3._
 import chisel3.util._
+import common.{ExuInput, ExuOutput, Redirect, XSParam}
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.config.Parameters
-import issue.{ExuInput, ExuOutput, Redirect, XSParam}
 import xs.utils.Assertion.xs_assert
-class Regfile(issueNum:Int, val entriesNum:Int, val typeString:String = "Int")(implicit p: Parameters) extends LazyModule with XSParam{
+class Regfile(writebackNum:Int, val entriesNum:Int, val typeString:String = "Int")(implicit p: Parameters) extends LazyModule with XSParam{
   require(typeString == "Int" || typeString == "Fp")
   val issueNode = new RegfileIssueNode
-  val writeBackNode = new RegfileWriteBackNode(Seq.fill(issueNum)(None))
+  val writeBackNode = new RegfileWriteBackNode(Seq.fill(writebackNum)(None))
   val isInt = typeString == "Int"
   override def module = new RegfileImpl(this)
 }

@@ -1,6 +1,6 @@
 import chisel3.stage.ChiselGeneratorAnnotation
+import common.{FuType, RsParam}
 import issue.IntRs.IntegerReservationStation
-import issue.{FuType, RsParam}
 import xs.utils.Assertion
 
 object GenRtl extends App {

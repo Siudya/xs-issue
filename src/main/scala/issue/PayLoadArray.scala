@@ -1,6 +1,7 @@
 package issue
 import chisel3._
 import chisel3.util._
+import common.{MicroOp, XSModule}
 import xs.utils.Assertion.xs_assert
 class PayloadArrayReadIO(entryNum:Int) extends Bundle {
   val addr = Input(UInt(entryNum.W))
