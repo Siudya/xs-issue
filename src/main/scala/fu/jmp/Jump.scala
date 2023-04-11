@@ -14,16 +14,13 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package xiangshan.backend.fu
+package fu.jmp
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import xiangshan._
-import utils._
-import xiangshan.backend._
-import xiangshan.backend.decode.ImmUnion
-import xiangshan.backend.decode.isa._
+import common.{FuOpType, ImmUnion, RedirectLevel, XSModule}
+import fu.FUWithRedirect
 import xs.utils.{ParallelMux, SignExt}
 
 class JumpDataModule(implicit p: Parameters) extends XSModule {
@@ -90,19 +87,8 @@ class Jump(implicit p: Parameters) extends FUWithRedirect {
   redirectOut.cfiUpdate.target := jumpDataModule.io.target
   redirectOut.cfiUpdate.isMisPred := jumpDataModule.io.target(VAddrBits - 1, 0) =/= jalr_target || !uop.cf.pred_taken
 
-  io.in.ready := io.out.ready
   io.out.valid := valid
   io.out.bits.uop <> io.in.bits.uop
   io.out.bits.data := jumpDataModule.io.result
 
-  // NOTE: the debug info is for one-cycle exec, if FMV needs multi-cycle, may needs change it
-  XSDebug(io.in.valid, "In(%d %d) Out(%d %d) Redirect:(%d %d %d)\n",
-    io.in.valid,
-    io.in.ready,
-    io.out.valid,
-    io.out.ready,
-    io.redirectIn.valid,
-    io.redirectIn.bits.level,
-    redirectHit
-  )
 }

@@ -21,15 +21,16 @@
 package issue
 import chisel3._
 import chisel3.util._
-import common.{ExuConfig, ExuType, Redirect, SelectInfo, XSModule}
-import common.RedirectLevel.flushItself
+import common.{Redirect, XSBundle, XSModule}
+import exu.{ExuConfig, ExuType}
 import xs.utils.Assertion.xs_assert
 import xs.utils.ParallelOperation
 
-class SelectResp(bankIdxWidth:Int, entryIdxWidth:Int) extends Bundle {
+class SelectResp(bankIdxWidth:Int, entryIdxWidth:Int) extends XSBundle {
   val info = new SelectInfo
   val entryIdxOH = UInt(entryIdxWidth.W)
   val bankIdxOH = UInt(bankIdxWidth.W)
+  val fuSel = UInt(log2Ceil(maxFuNumInExu).W)
 }
 class SelectMux(bankIdxWidth:Int, entryIdxWidth:Int) extends Module{
   val io = IO(new Bundle{
@@ -96,6 +97,14 @@ class Selector(bankNum:Int, entryNum:Int, inputWidth:Int) extends Module{
   *       The one hot format bank index of selected instruction.
   *     entryIdxOH:
   *       The one hot format entry index of selected instruction.
+  *   tokenRelease: [Optional][UInt]
+  *     Bit vector to release token.
+  *     Some FU may need uncertain clocks to finished its job.
+  *     Issuing an instruction of these kind of FUs consumes 1 token.
+  *     Stop issuing instructions when running out of tokens.
+  *     After these FUs finished a job, release a token to token allocator.
+  *     We replace valid-ready handshake with token-release handshake to
+  *     cut off ready signal propagation.
   * }}}
 */
 
@@ -107,7 +116,7 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name
     val redirect = Input(Valid(new Redirect))
     val selectInfo = Input(Vec(bankNum,Vec(entryNum, Valid(new SelectInfo))))
     val issueInfo = Output(Vec(issueNum, Valid(new SelectResp(bankNum, entryNum))))
-    val tokenRelease = if(mayBeBlocked) Some(Input(Vec(issueNum, Valid(UInt(MaxRegfileIdxWidth.W))))) else None
+    val tokenRelease = if(mayBeBlocked) Some(Input(UInt(issueNum.W))) else None
   })
   override val desiredName:String = name.getOrElse("SelectNetwork")
 
@@ -136,7 +145,7 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name
   }
   for(((outPort,driver), idx) <- io.issueInfo.zip(selectorSeq).zipWithIndex){
     val shouldBeSuppressed = driver.io.out.bits.info.robPtr.needFlush(io.redirect)
-    val tokenAllocator = if(mayBeBlocked) Some(Module(new IssueTokenAllocator(MaxRegfileIdxWidth, cfg.fuConfigs.length))) else None
+    val tokenAllocator = if(mayBeBlocked) Some(Module(new IssueTokenAllocator(issueNum, cfg.fuConfigs.length))) else None
     val outValid = Wire(Bool())
     if(mayBeBlocked){
       tokenAllocator.get.io.redirect := io.redirect
@@ -144,15 +153,18 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name
       tokenAllocator.get.io.request.valid := driver.io.out.valid && !shouldBeSuppressed
       tokenAllocator.get.io.request.bits.pdest := driver.io.out.bits.info.pdest
       tokenAllocator.get.io.request.bits.robPtr := driver.io.out.bits.info.robPtr
-      outValid := tokenAllocator.get.io.grant
+      outValid := tokenAllocator.get.io.grant.valid
+      outPort.bits.fuSel := tokenAllocator.get.io.grant.bits
     } else {
       outValid := driver.io.out.valid && !shouldBeSuppressed
+      outPort.bits.fuSel := DontCare
     }
 
     outPort.valid := outValid
     outPort.bits.bankIdxOH := driver.io.out.bits.bankIdxOH
     outPort.bits.entryIdxOH := driver.io.out.bits.entryIdxOH
     outPort.bits.info := driver.io.out.bits.info
+
   }
 
   private val flatInputInfoVec = VecInit(io.selectInfo.map(_.reverse).reverse.reduce(_++_))

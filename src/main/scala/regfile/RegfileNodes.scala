@@ -4,7 +4,8 @@ import freechips.rocketchip.diplomacy._
 import chisel3._
 import chisel3.internal.sourceinfo.SourceInfo
 import chisel3.util._
-import common.{ExuConfig, ExuInput, ExuOutput, MicroOp}
+import common.{ExuInput, ExuOutput, MicroOp}
+import exu.ExuConfig
 
 object RegfileInwardImpl extends InwardNodeImp[Option[ExuConfig],ExuConfig,ExuConfig,Valid[MicroOp]]{
   override def edgeI(pd: Option[ExuConfig], pu: ExuConfig, p: config.Parameters, sourceInfo: SourceInfo) = pu

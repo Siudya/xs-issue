@@ -14,18 +14,33 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package xiangshan.backend.fu
+package fu.fence
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import xiangshan._
-import utils._
-import xiangshan.ExceptionNO.illegalInstr
+import common.ExceptionNO.illegalInstr
+import common.XSBundle
+import fu.FunctionUnit
+import xs.utils.Assertion.xs_assert
 
 class FenceToSbuffer extends Bundle {
   val flushSb = Output(Bool())
   val sbIsEmpty = Input(Bool())
+}
+
+class SfenceBundle(implicit p: Parameters) extends XSBundle {
+  val valid = Bool()
+  val bits = new Bundle {
+    val rs1 = Bool()
+    val rs2 = Bool()
+    val addr = UInt(VAddrBits.W)
+    val asid = UInt(AsidLength.W)
+  }
+
+  override def toPrintable: Printable = {
+    p"valid:0x${Hexadecimal(valid)} rs1:${bits.rs1} rs2:${bits.rs2} addr:${Hexadecimal(bits.addr)}"
+  }
 }
 
 class Fence(implicit p: Parameters) extends FunctionUnit {
@@ -63,8 +78,6 @@ class Fence(implicit p: Parameters) extends FunctionUnit {
   sfence.valid := state === s_tlb && !disableSfence
   sfence.bits.rs1  := uop.ctrl.imm(4, 0) === 0.U
   sfence.bits.rs2  := uop.ctrl.imm(9, 5) === 0.U
-  XSError(sfence.valid && uop.ctrl.lsrc(0) =/= uop.ctrl.imm(4, 0), "lsrc0 is passed by imm\n")
-  XSError(sfence.valid && uop.ctrl.lsrc(1) =/= uop.ctrl.imm(9, 5), "lsrc1 is passed by imm\n")
   sfence.bits.addr := RegEnable(io.in.bits.src(0), io.in.fire())
   sfence.bits.asid := RegEnable(io.in.bits.src(1), io.in.fire())
 
@@ -75,16 +88,10 @@ class Fence(implicit p: Parameters) extends FunctionUnit {
   when (state === s_wait && func === FenceOpType.nofence  && sbEmpty) { state := s_nofence }
   when (state =/= s_idle && state =/= s_wait) { state := s_idle }
 
-  io.in.ready := state === s_idle
   io.out.valid := state =/= s_idle && state =/= s_wait
   io.out.bits.data := DontCare
   io.out.bits.uop := uop
   io.out.bits.uop.cf.exceptionVec(illegalInstr) := func === FenceOpType.sfence && disableSfence
 
-  XSDebug(io.in.valid, p"In(${io.in.valid} ${io.in.ready}) state:${state} Inpc:0x${Hexadecimal(io.in.bits.uop.cf.pc)} InrobIdx:${io.in.bits.uop.robIdx}\n")
-  XSDebug(state =/= s_idle, p"state:${state} sbuffer(flush:${sbuffer} empty:${sbEmpty}) fencei:${fencei} sfence:${sfence}\n")
-  XSDebug(io.out.valid, p" Out(${io.out.valid} ${io.out.ready}) state:${state} Outpc:0x${Hexadecimal(io.out.bits.uop.cf.pc)} OutrobIdx:${io.out.bits.uop.robIdx}\n")
-
-  assert(!(io.out.valid && io.out.bits.uop.ctrl.rfWen))
-  assert(!io.out.valid || io.out.ready, "when fence is out valid, out ready should always be true")
+  xs_assert(!(io.out.valid && io.out.bits.uop.ctrl.rfWen))
 }

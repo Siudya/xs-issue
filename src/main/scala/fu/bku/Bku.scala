@@ -14,14 +14,14 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package xiangshan.backend.fu
+package fu.bku
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import utils._
+import common.XSModule
+import fu.{FunctionUnit, HasPipelineReg}
 import xs.utils._
-import xiangshan._
 import xiangshan.backend.fu.util._
 
 

@@ -18,13 +18,12 @@
 // https://github.com/OpenXiangShan/XS-Verilog-Library/tree/main/int_div_radix_4_v1
 // Email of original author: hyf_sysu@qq.com
 
-package xiangshan.backend.fu
+package fu.mdu
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import xs.utils.SignExt
-import xiangshan.backend.fu.util.CSA3_2
 
 /** A Radix-4 SRT Integer Divider
   *
@@ -241,7 +240,7 @@ class SRT4DividerDataModule(len: Int) extends Module {
   val quotIterNext = Wire(UInt(len.W))
   val quotIterM1Next = Wire(UInt(len.W))
   quotIterNext := Mux1H(Seq(
-    qPrevReg(quot_pos_2) -> (quotIterReg << 2 | "b10".U),
+    qPrevReg(quot_pos_2) -> ((quotIterReg << 2) | "b10".U),
     qPrevReg(quot_pos_1) -> (quotIterReg << 2 | "b01".U),
     qPrevReg(quot_0)     -> (quotIterReg << 2 | "b00".U),
     qPrevReg(quot_neg_1) -> (quotM1IterReg << 2 | "b11".U),
@@ -448,9 +447,8 @@ class SRT4Divider(len: Int)(implicit p: Parameters) extends AbstractDivider(len)
   divDataModule.io.kill_r := kill_r
   divDataModule.io.isHi := ctrlReg.isHi
   divDataModule.io.isW := ctrlReg.isW
-  divDataModule.io.out_ready := io.out.ready
+  divDataModule.io.out_ready := true.B
 
-  io.in.ready := divDataModule.io.in_ready
   io.out.valid := divDataModule.io.out_valid
   io.out.bits.data := divDataModule.io.out_data
   io.out.bits.uop := uopReg

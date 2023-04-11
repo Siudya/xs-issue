@@ -2,7 +2,8 @@ package issue.IntRs
 import issue._
 import chisel3._
 import chisel3.util._
-import common.{EarlyWakeUpInfo, MicroOp, Redirect, SelectInfo, WakeUpInfo}
+import common.{ MicroOp, Redirect}
+import issue.{EarlyWakeUpInfo, SelectInfo, WakeUpInfo}
 
 class IntegerPayloadEntryEncoder extends Module{
   val io = IO(new Bundle{

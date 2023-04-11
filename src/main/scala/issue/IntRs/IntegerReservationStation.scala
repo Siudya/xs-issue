@@ -2,7 +2,8 @@ package issue.IntRs
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import common.{DispatchParam, EarlyWakeUpInfo, ExuType, MicroOp, Redirect, RsParam, WakeUpInfo, XSParam}
+import common.{MicroOp, Redirect, XSParam}
+import exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import issue._
 
@@ -59,7 +60,8 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
   private val selectNetworkSeq = issuePortList.map(elm => {
     val snIssueNum = elm.length
     val snName = elm.head._2.name
-    val mod = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, snIssueNum, elm.head._2, Some(s"Integer${snName}SelectNetwork")))
+    val snCfg = elm.head._2
+    val mod = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, snIssueNum, snCfg, Some(s"Integer${snName}SelectNetwork")))
     mod.io.redirect := io.redirect
     if(elm.head._2.latency != Int.MaxValue){
       val wkq = Seq.fill(snIssueNum)(Module(new WakeupQueue(elm.head._2.latency - 1)))

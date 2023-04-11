@@ -1,7 +1,7 @@
 package issue
 import chisel3._
 import chisel3.util._
-import common.{Redirect, WakeUpInfo}
+import common.Redirect
 class WakeupQueue(latency:Int) extends Module{
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))

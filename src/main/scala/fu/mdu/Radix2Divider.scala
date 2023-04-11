@@ -14,12 +14,12 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package xiangshan.backend.fu
+package fu.mdu
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import xiangshan._
+import fu.FunctionUnit
 import xs.utils.SignExt
 
 abstract class AbstractDivider(len: Int)(implicit p: Parameters) extends FunctionUnit(len){
@@ -83,9 +83,7 @@ class Radix2Divider(len: Int)(implicit p: Parameters) extends AbstractDivider(le
     cnt.inc()
     when (cnt.value === (len-1).U) { state := s_finish }
   } .elsewhen (state === s_finish) {
-    when(io.out.ready){
-      state := s_idle
-    }
+    state := s_idle
   }
 
   val kill = state=/=s_idle && uopReg.robIdx.needFlush(io.redirectIn)
@@ -103,5 +101,4 @@ class Radix2Divider(len: Int)(implicit p: Parameters) extends AbstractDivider(le
   io.out.bits.uop := uopReg
 
   io.out.valid := state === s_finish
-  io.in.ready := state === s_idle
 }

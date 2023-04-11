@@ -4,7 +4,8 @@ import chisel3.util._
 import chipsalliance.rocketchip.config
 import freechips.rocketchip.diplomacy._
 import chisel3.internal.sourceinfo.SourceInfo
-import common.{DispatchParam, ExuConfig, MicroOp}
+import common.{DispatchParam, MicroOp}
+import exu.ExuConfig
 
 object RsIssueNodeImpl extends SimpleNodeImp[Option[ExuConfig], ExuConfig, ExuConfig, Valid[MicroOp]]{
   override def edge(pd: Option[ExuConfig], pu: ExuConfig, p: config.Parameters, sourceInfo: SourceInfo): ExuConfig = pu

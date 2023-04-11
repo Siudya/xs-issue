@@ -14,7 +14,7 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package xiangshan.backend.fu.util
+package fu.bku
 
 import chisel3._
 import chisel3.util._

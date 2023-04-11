@@ -20,7 +20,7 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import common.{FuOpType, RedirectLevel, XSModule}
-import xiangshan.backend.fu.FUWithRedirect
+import fu.FUWithRedirect
 import xs.utils.{LookupTree, SignExt, ZeroExt}
 
 class AddModule(implicit p: Parameters) extends XSModule {

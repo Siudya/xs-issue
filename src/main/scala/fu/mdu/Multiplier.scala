@@ -14,14 +14,12 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package xiangshan.backend.fu
+package fu.mdu
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import xiangshan._
-import utils._
-import xiangshan.backend.fu.util.{C22, C32, C53}
+import fu.{FunctionUnit, HasPipelineReg}
 import xs.utils.SignExt
 
 class MulDivCtrl extends Bundle{
@@ -56,8 +54,6 @@ class NaiveMultiplier(len: Int, val latency: Int)(implicit p: Parameters)
   val xlen = io.out.bits.data.getWidth
   val res = Mux(ctrlVec.last.isHi, dataVec.last(2*xlen-1, xlen), dataVec.last(xlen-1,0))
   io.out.bits.data := Mux(ctrlVec.last.isW, SignExt(res(31,0),xlen), res)
-
-  XSDebug(p"validVec:${Binary(Cat(validVec))} flushVec:${Binary(Cat(flushVec))}\n")
 }
 
 class ArrayMulDataModule(len: Int) extends Module {
@@ -200,6 +196,4 @@ class ArrayMultiplier(len: Int)(implicit p: Parameters)
   val res = Mux(ctrlVec.last.isHi, result(2*xlen-1, xlen), result(xlen-1,0))
 
   io.out.bits.data := Mux(ctrlVec.last.isW, SignExt(res(31,0),xlen), res)
-
-  XSDebug(p"validVec:${Binary(Cat(validVec))} flushVec:${Binary(Cat(flushVec))}\n")
 }

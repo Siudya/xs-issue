@@ -221,9 +221,11 @@ class CfCtrl extends XSBundle {
   val ctrl = new CtrlSignals
 }
 
-class CtrlFlow extends Bundle {
+class CtrlFlow extends XSBundle {
+  val pc = UInt(VAddrBits.W)
   val pd = new PreDecodeInfo
   val pred_taken = Bool()
+  val exceptionVec = ExceptionVec()
   val storeSetHit = Bool() // inst has been allocated an store set
   val ssid = UInt(5.W)
   val ftqPtr = new FtqPtr
@@ -253,6 +255,7 @@ class CfiUpdateInfo extends XSBundle{
   val predTaken = Bool()
   val taken = Bool()
   val isMisPred = Bool()
+  val target = UInt(VAddrBits.W)
 }
 class Redirect extends XSBundle {
   val robIdx = new RobPtr
@@ -290,6 +293,7 @@ class MicroOp extends CfCtrl {
   val lqIdx = new LqPtr
   val sqIdx = new SqPtr
   val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
+  val fuSel = UInt(log2Ceil(maxFuNumInExu).W)
 }
 
 class ExuInput(srcNum:Int) extends XSBundle {
@@ -317,97 +321,75 @@ trait XSParam{
   val intExuNum = 7
   val memExuNum = 6
   val floatExuNum = 6
+  val VAddrBits = 39
+  val AsidLength = 16
+  val maxFuNumInExu = 8
 }
 class XSBundle extends Bundle with XSParam
 class XSModule extends Module with XSParam
 
-abstract class BasicStatusArrayEntry(val srcNum:Int, isIntSrc:Boolean) extends XSBundle{
-  val psrc = Vec(srcNum, UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W))
-  val pdest = UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W)
-  val srcType = Vec(srcNum, SrcType())
-  val srcState = Vec(srcNum, SrcState())
-  val lpv = Vec(srcNum, Vec(loadUnitNum, UInt(LpvLength.W)))
-  val fuType = FuType()
-  val rfWen = Bool()
-  val fpWen = Bool()
-  val robIdx = new RobPtr
-}
-class MemoryStatusArrayEntry extends BasicStatusArrayEntry(2, true)
-class FloatStatusArrayEntry extends BasicStatusArrayEntry(3, false)
-
-class SelectInfo extends XSBundle{
-  val fuType = FuType()
-  val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
-  val pdest = UInt(MaxRegfileIdxWidth.W)
-  val rfWen = Bool()
-  val fpWen = Bool()
-  val robPtr = new RobPtr
+object ExceptionVec {
+  def apply() = Vec(16, Bool())
 }
 
-class BasicWakeupInfo extends XSBundle{
-  val pdest = UInt(MaxRegfileIdxWidth.W)
-  val robPtr = new RobPtr
-}
-class WakeUpInfo extends BasicWakeupInfo{
-  val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
-}
-class EarlyWakeUpInfo extends BasicWakeupInfo{
-  val lpv = UInt(LpvLength.W)
-}
+object ExceptionNO {
+  def instrAddrMisaligned = 0
+  def instrAccessFault = 1
+  def illegalInstr = 2
+  def breakPoint = 3
+  def loadAddrMisaligned = 4
+  def loadAccessFault = 5
+  def storeAddrMisaligned = 6
+  def storeAccessFault = 7
+  def ecallU = 8
+  def ecallS = 9
+  def ecallM = 11
+  def instrPageFault = 12
+  def loadPageFault = 13
+  // def singleStep          = 14
+  def storePageFault = 15
 
-case class RsParam
-(
-  entriesNum:Int = 48,
-  wakeUpPortNum:Int = 4,
+  def priorities = Seq(
+    breakPoint, // TODO: different BP has different priority
+    instrPageFault,
+    instrAccessFault,
+    illegalInstr,
+    instrAddrMisaligned,
+    ecallM, ecallS, ecallU,
+    storeAddrMisaligned,
+    loadAddrMisaligned,
+    storePageFault,
+    loadPageFault,
+    storeAccessFault,
+    loadAccessFault
+  )
 
-  //Unchangeable parameters
-  bankNum:Int = 4
-)
+  def all = priorities.distinct.sorted
 
-case class FuConfig
-(
-  name: String,
-  fuSel: MicroOp => Bool,
-  fuType: UInt,
-  numIntSrc: Int,
-  numFpSrc: Int,
-  writeIntRf: Boolean,
-  writeFpRf: Boolean,
-  writeFflags: Boolean = false,
-  latency: Int
-) {
-  def srcCnt: Int = math.max(numIntSrc, numFpSrc)
-}
-object ExuType{
-  def jmp = 0
-  def alu = 1
-  def mul = 2
-  def div = 3
-  def load = 4
-  def sta = 5
-  def std = 6
-  def fmisc = 7
-  def fmac = 8
-  def intType: Seq[Int] = Seq(jmp, alu, mul, div)
-  def memType: Seq[Int] = Seq(load, sta, std)
-  def fpType: Seq[Int] = Seq(fmisc, fmac)
-  def maybeBlockType:Seq[Int] = Seq(div, fmac, fmisc)
-}
-case class ExuConfig
-(
-  name: String,
-  id: Int,
-  blockName: String, // NOTE: for perf counter
-  fuConfigs: Seq[FuConfig],
-  exuType:Int,
-  srcNum:Int,
-){
-  def hasFastWakeup = fuConfigs.map(_.latency).max != Int.MaxValue
-  def latency = fuConfigs.map(_.latency).max
-}
+  def frontendSet = Seq(
+    instrAddrMisaligned,
+    instrAccessFault,
+    illegalInstr,
+    instrPageFault
+  )
 
-case class DispatchParam
-(
-  name: String,
-  width: Int
-)
+  def partialSelect(vec: Vec[Bool], select: Seq[Int]): Vec[Bool] = {
+    val new_vec = Wire(ExceptionVec())
+    new_vec.foreach(_ := false.B)
+    select.foreach(i => new_vec(i) := vec(i))
+    new_vec
+  }
+
+  def selectFrontend(vec: Vec[Bool]): Vec[Bool] = partialSelect(vec, frontendSet)
+
+  def selectAll(vec: Vec[Bool]): Vec[Bool] = partialSelect(vec, ExceptionNO.all)
+
+  def selectByFu(vec: Vec[Bool], fuConfig: FuConfig): Vec[Bool] =
+    partialSelect(vec, fuConfig.exceptionOut)
+
+  def selectByExu(vec: Vec[Bool], exuConfig: ExuConfig): Vec[Bool] =
+    partialSelect(vec, exuConfig.exceptionOut)
+
+  def selectByExu(vec: Vec[Bool], exuConfigs: Seq[ExuConfig]): Vec[Bool] =
+    partialSelect(vec, exuConfigs.map(_.exceptionOut).reduce(_ ++ _).distinct.sorted)
+}

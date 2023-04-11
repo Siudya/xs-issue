@@ -18,14 +18,13 @@
 // https://github.com/OpenXiangShan/XS-Verilog-Library/tree/main/int_div_radix_4_v1
 // Email of original author: hyf_sysu@qq.com
 
-package xiangshan.backend.fu
+package fu.mdu
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
+import fu.FunctionUnit
 import xs.utils._
-import xiangshan._
-import xiangshan.backend.fu.util.CSA3_2
 
 class SRT16DividerDataModule(len: Int) extends Module {
   val io = IO(new Bundle() {
@@ -460,9 +459,8 @@ class SRT16Divider(len: Int)(implicit p: Parameters) extends AbstractDivider(len
   divDataModule.io.kill_r := kill_r
   divDataModule.io.isHi := ctrlReg.isHi
   divDataModule.io.isW := ctrlReg.isW
-  divDataModule.io.out_ready := io.out.ready
+  divDataModule.io.out_ready := true.B
 
-  io.in.ready := divDataModule.io.in_ready
   io.out.valid := divDataModule.io.out_valid
   io.out.bits.data := divDataModule.io.out_data
   io.out.bits.uop := uopReg
