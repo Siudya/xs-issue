@@ -9,7 +9,7 @@ import fu.alu.Alu
 import fu.mdu.DividerWrapper
 import xs.utils.Assertion.xs_assert
 
-class DivExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends LazyModule with XSParam{
+class DivExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu with XSParam{
   private val cfg = ExuConfig(
     name = "DivExu",
     id = id,
@@ -24,9 +24,8 @@ class DivExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends LazyMod
   lazy val module = new DivExuImpl(this)
 }
 
-class DivExuImpl(outer:DivExu) extends LazyModuleImp(outer) with XSParam{
+class DivExuImpl(outer:DivExu) extends BasicExuImpl(outer) with XSParam{
   val io = IO(new Bundle {
-    val redirectIn = Input(Valid(new Redirect))
     val bypassIn = Input(Vec(outer.bypassInNum, Valid(new ExuOutput)))
   })
   private val issuePort = outer.issueNode.in.head._1
@@ -34,23 +33,25 @@ class DivExuImpl(outer:DivExu) extends LazyModuleImp(outer) with XSParam{
   private val divs = Seq.fill(divNumInOneExu)(Module(new DividerWrapper(XLEN)))
   private val outputArbiter = Module(new Arbiter(new FuOutput(XLEN), divNumInOneExu))
 
-  private val bypass = io.bypassIn
-  private val bypassData = bypass.map(_.bits.data)
-  private val bypassSrc0Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.fuInput.bits.uop.psrc(0))
-  private val bypassSrc1Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.fuInput.bits.uop.psrc(1))
-  private val bypassSrc0Valid = Cat(bypassSrc0Hits).orR
-  private val bypassSrc0Data = Mux1H(bypassSrc0Hits, bypassData)
-  private val bypassSrc1Valid = Cat(bypassSrc1Hits).orR
-  private val bypassSrc1Data = Mux1H(bypassSrc1Hits, bypassData)
-
   private val finalIssueSignals = WireInit(issuePort.fuInput)
-  finalIssueSignals.bits.src(0) := Mux(bypassSrc0Valid, bypassSrc0Data, issuePort.fuInput.bits.src(0))
-  finalIssueSignals.bits.src(1) := Mux(bypassSrc1Valid, bypassSrc1Data, issuePort.fuInput.bits.src(1))
+  if (outer.bypassInNum > 0) {
+    val bypass = io.bypassIn
+    val bypassData = bypass.map(_.bits.data)
+    val bypassSrc0Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.fuInput.bits.uop.psrc(0))
+    val bypassSrc1Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.fuInput.bits.uop.psrc(1))
+    val bypassSrc0Valid = Cat(bypassSrc0Hits).orR
+    val bypassSrc0Data = Mux1H(bypassSrc0Hits, bypassData)
+    val bypassSrc1Valid = Cat(bypassSrc1Hits).orR
+    val bypassSrc1Data = Mux1H(bypassSrc1Hits, bypassData)
+    finalIssueSignals.bits.src(0) := Mux(bypassSrc0Valid, bypassSrc0Data, issuePort.fuInput.bits.src(0))
+    finalIssueSignals.bits.src(1) := Mux(bypassSrc1Valid, bypassSrc1Data, issuePort.fuInput.bits.src(1))
+  }
 
   private val releaseDriverRegs = RegInit(VecInit(Seq.fill(divNumInOneExu)(false.B)))
-  private val divSel = writebackPort.bits.uop.fuSel
+  private val divSel = finalIssueSignals.bits.uop.fuSel
+  xs_assert(Mux(finalIssueSignals.valid, PopCount(divSel) === 1.U, true.B))
   for((((div, en), arbIn), rlsReg) <- divs.zip(divSel.asBools).zip(outputArbiter.io.in).zip(releaseDriverRegs)){
-    div.io.redirectIn := io.redirectIn
+    div.io.redirectIn := redirectIn
     div.io.in.valid := finalIssueSignals.valid & en
     div.io.in.bits.uop := finalIssueSignals.bits.uop
     div.io.in.bits.src := finalIssueSignals.bits.src

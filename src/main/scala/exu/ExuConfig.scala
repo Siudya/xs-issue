@@ -46,6 +46,6 @@ case class ExuConfig
   val latency: Int = fuConfigs.map(_.latency).max
   val exceptionOut: Seq[Int] = fuConfigs.map(_.exceptionOut).reduce(_ ++ _).distinct.sorted
 
-  override def toString = s"${name} #${id} belongs to ${blockName}:\n\tsrcNum: ${srcNum} Type: ${ExuType.typeToString(exuType)}\n" +
-    s"\t" + fuConfigs.toString()
+  override def toString = s"${name} #${id} belongs to ${blockName}: srcNum: ${srcNum} Type: ${ExuType.typeToString(exuType)} " +
+    s"\n\tFunction Units: " + fuConfigs.toString()
 }

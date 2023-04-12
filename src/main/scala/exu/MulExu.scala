@@ -10,7 +10,7 @@ import fu.mdu.{ArrayMultiplier, MDUOpType}
 import xs.utils.Assertion.xs_assert
 import xs.utils.{LookupTree, ParallelMux, SignExt, ZeroExt}
 
-class MulExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends LazyModule{
+class MulExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu{
   private val cfg  = ExuConfig(
     name = "MulExu",
     id = id,
@@ -24,9 +24,8 @@ class MulExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends LazyMod
 
   lazy val module = new MulExuImpl(this)
 }
-class MulExuImpl(outer:MulExu)(implicit p:Parameters) extends LazyModuleImp(outer) with XSParam{
+class MulExuImpl(outer:MulExu)(implicit p:Parameters) extends BasicExuImpl(outer) with XSParam{
   val io = IO(new Bundle{
-    val redirectIn = Input(Valid(new Redirect))
     val bypassIn = Input(Vec(outer.bypassInNum, Valid(new ExuOutput)))
     val bypassOut = Output(Valid(new ExuOutput))
   })
@@ -36,32 +35,29 @@ class MulExuImpl(outer:MulExu)(implicit p:Parameters) extends LazyModuleImp(oute
   private val mul = Module(new ArrayMultiplier(XLEN + 1)(p))
   private val bku = Module(new Bku)
 
-  private val bypass = io.bypassIn :+ writebackPort
-  private val bypassData = bypass.map(_.bits.data)
-  private val bypassSrc0Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.fuInput.bits.uop.psrc(0))
-  private val bypassSrc1Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.fuInput.bits.uop.psrc(1))
-  private val bypassSrc0Valid = Cat(bypassSrc0Hits).orR
-  private val bypassSrc0Data = Mux1H(bypassSrc0Hits, bypassData)
-  private val bypassSrc1Valid = Cat(bypassSrc1Hits).orR
-  private val bypassSrc1Data = Mux1H(bypassSrc1Hits, bypassData)
-
   private val finalIssueSignals = WireInit(issuePort.fuInput)
-  finalIssueSignals.bits.src(0) := Mux(bypassSrc0Valid, bypassSrc0Data, issuePort.fuInput.bits.src(0))
-  finalIssueSignals.bits.src(1) := Mux(bypassSrc1Valid, bypassSrc1Data, issuePort.fuInput.bits.src(1))
+  if(outer.bypassInNum > 0) {
+    val bypass = io.bypassIn :+ writebackPort
+    val bypassData = bypass.map(_.bits.data)
+    val bypassSrc0Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.fuInput.bits.uop.psrc(0))
+    val bypassSrc1Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.fuInput.bits.uop.psrc(1))
+    val bypassSrc0Valid = Cat(bypassSrc0Hits).orR
+    val bypassSrc0Data = Mux1H(bypassSrc0Hits, bypassData)
+    val bypassSrc1Valid = Cat(bypassSrc1Hits).orR
+    val bypassSrc1Data = Mux1H(bypassSrc1Hits, bypassData)
+    finalIssueSignals.bits.src(0) := Mux(bypassSrc0Valid, bypassSrc0Data, issuePort.fuInput.bits.src(0))
+    finalIssueSignals.bits.src(1) := Mux(bypassSrc1Valid, bypassSrc1Data, issuePort.fuInput.bits.src(1))
+  }
 
   bku.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === FuType.bku
   bku.io.in.bits.uop := finalIssueSignals.bits.uop
-  bku.io.in.bits.src(0) := finalIssueSignals.bits.src(0)
-  bku.io.in.bits.src(1) := finalIssueSignals.bits.src(1)
-  bku.io.in.bits.src(2) := DontCare
-  bku.io.redirectIn := io.redirectIn
+  bku.io.in.bits.src := finalIssueSignals.bits.src
+  bku.io.redirectIn := redirectIn
 
   mul.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === FuType.mul
   mul.io.in.bits.uop := finalIssueSignals.bits.uop
-  mul.io.in.bits.src(0) := finalIssueSignals.bits.src(0)
-  mul.io.in.bits.src(1) := finalIssueSignals.bits.src(1)
   mul.io.in.bits.src(2) := DontCare
-  mul.io.redirectIn := io.redirectIn
+  mul.io.redirectIn := redirectIn
 
   private val (func, src1, src2) = (
     finalIssueSignals.bits.uop.ctrl.fuOpType,

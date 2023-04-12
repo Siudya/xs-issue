@@ -300,11 +300,11 @@ class MicroOp extends CfCtrl {
 }
 
 class ExuInput(rlsWidth:Int) extends XSBundle {
-  val fuInput = Flipped(Valid(new Bundle{
+  val fuInput = Valid(new Bundle{
     val uop = new MicroOp
     val src = Vec(3, UInt(XLEN.W))
-  }))
-  val release = Output(UInt(rlsWidth.W))
+  })
+  val release = Input(UInt(rlsWidth.W))
 }
 
 class ExuOutput extends XSBundle {

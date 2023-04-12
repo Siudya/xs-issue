@@ -7,13 +7,15 @@ import exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import issue._
 
-class IntegerReservationStation(implicit p: Parameters) extends LazyModule{
+class IntegerReservationStation(implicit p: Parameters) extends LazyModule with XSParam{
 
   private val bankNum = 4
   private val issueNum = 7
+  private val wakeupNum = 1
   val enqNode = new RsDispatchNode(Seq(DispatchParam("Integer", bankNum)))
   val issueNode = new RsIssueNode(Seq.fill(issueNum)(None))
-  private val rsParam = RsParam(48, 4, bankNum)
+  val wakeupNode = new RsWakeupNode(Seq.fill(wakeupNum)(None))
+  private val rsParam = RsParam(48, bankNum)
   lazy val module = new IntegerReservationStationImpl(this, rsParam)
 }
 class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsParam) extends LazyModuleImp(outer) with XSParam {
@@ -21,6 +23,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
   require(param.entriesNum % param.bankNum == 0)
   private val enq = outer.enqNode.in
   private val issue = outer.issueNode.out
+  private val wakeup = outer.wakeupNode.in
   issue.foreach(elm => require(ExuType.intType.contains(elm._2.exuType)))
   private val jmpIssue = issue.filter(_._2.exuType == ExuType.jmp)
   private val aluIssue = issue.filter(_._2.exuType == ExuType.alu)
@@ -38,7 +41,6 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
 
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
-    val wakeup = Input(Vec(param.wakeUpPortNum, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
     val specWakeup = Output(Vec(internalWakeupNum, Valid(new WakeUpInfo)))
@@ -48,10 +50,11 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
   io.specWakeup := internalWakeup
   private var internalWakeupPtr = 0
 
+  private val wakeupSignals = VecInit(wakeup.map(_._1))
   private val rsBankSeq = Seq.tabulate(param.bankNum)( _ => {
-    val mod = Module(new IntegerReservationStationBank(entriesNumPerBank, issueTypeNum, internalWakeupNum + param.wakeUpPortNum, loadUnitNum))
+    val mod = Module(new IntegerReservationStationBank(entriesNumPerBank, issueTypeNum, internalWakeupNum + wakeup.length, loadUnitNum))
     mod.io.redirect := io.redirect
-    mod.io.wakeup := io.wakeup ++ internalWakeup
+    mod.io.wakeup := wakeupSignals ++ internalWakeup
     mod.io.loadEarlyWakeup := io.loadEarlyWakeup
     mod.io.earlyWakeUpCancel := io.earlyWakeUpCancel
     mod

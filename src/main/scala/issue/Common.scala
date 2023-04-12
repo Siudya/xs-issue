@@ -40,8 +40,6 @@ class EarlyWakeUpInfo extends BasicWakeupInfo{
 case class RsParam
 (
   entriesNum:Int = 48,
-  wakeUpPortNum:Int = 4,
-
   //Unchangeable parameters
   bankNum:Int = 4
 )

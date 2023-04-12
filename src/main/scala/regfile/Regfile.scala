@@ -19,7 +19,7 @@ class RegfileImpl(outer: Regfile)(implicit p: Parameters) extends LazyModuleImp(
   private val issueIn = outer.issueNode.in
   private val issueOut = outer.issueNode.out
   private val jmpNum = issueOut.map(_._2).count(_.exuType == ExuType.jmp)
-  require(jmpNum == 1, "Only one jmp module is supported!")
+  require(jmpNum <= 1, "Only one jmp module is supported!")
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
     val jmpTargetRead = Output(UInt(if(jmpNum > 0) log2Ceil(FtqSize).W else 0.W))
@@ -28,7 +28,7 @@ class RegfileImpl(outer: Regfile)(implicit p: Parameters) extends LazyModuleImp(
     val jmpPcData = Input(UInt(if(jmpNum > 0) VAddrBits.W else 0.W))
   })
   private val writeBacks = outer.writeBackNode.in
-  private val mem = Mem(outer.entriesNum, UInt(64.W))
+  private val mem = Mem(outer.entriesNum, UInt(XLEN.W))
   private val wbEnables = writeBacks.map({case(b, _) =>
     val correctRf = if(isInt) b.bits.uop.ctrl.rfWen else b.bits.uop.ctrl.fpWen
     correctRf && b.valid && !b.bits.uop.robIdx.needFlush(io.redirect)
@@ -46,6 +46,7 @@ class RegfileImpl(outer: Regfile)(implicit p: Parameters) extends LazyModuleImp(
     val eo = issO._2
     bi.release := bo.release
     val outBundle = Wire(new ExuInput(eo.releaseWidth))
+    outBundle.release := DontCare
     outBundle.fuInput.valid := bi.uop.valid
     outBundle.fuInput.bits.uop := bi.uop.bits
     outBundle.fuInput.bits.src.take(eo.srcNum).zip(bi.uop.bits.psrc.take(eo.srcNum)).foreach({case(data, addr) =>
@@ -62,7 +63,9 @@ class RegfileImpl(outer: Regfile)(implicit p: Parameters) extends LazyModuleImp(
       bo.fuInput.bits.src(1) := io.jmpTargetData
       bo.fuInput.bits.uop.cf.pc := io.jmpPcData
     }
-    bo.fuInput.valid := RegNext(outBundle.fuInput.valid, false.B)
-    bo.fuInput.bits := RegEnable(outBundle.fuInput.bits, outBundle.fuInput.valid)
+    val outputValidDriverRegs = RegNext(outBundle.fuInput.valid, false.B)
+    val outputDataDriverRegs = RegEnable(outBundle.fuInput.bits, outBundle.fuInput.valid)
+    bo.fuInput.valid := outputValidDriverRegs
+    bo.fuInput.bits := outputDataDriverRegs
   })
 }
