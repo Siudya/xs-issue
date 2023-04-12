@@ -116,7 +116,7 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name
     val redirect = Input(Valid(new Redirect))
     val selectInfo = Input(Vec(bankNum,Vec(entryNum, Valid(new SelectInfo))))
     val issueInfo = Output(Vec(issueNum, Valid(new SelectResp(bankNum, entryNum))))
-    val tokenRelease = if(mayBeBlocked) Some(Input(UInt(issueNum.W))) else None
+    val tokenRelease = if(mayBeBlocked) Some(Input(Vec(issueNum, UInt(cfg.releaseWidth.W)))) else None
   })
   override val desiredName:String = name.getOrElse("SelectNetwork")
 
@@ -143,16 +143,16 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name
       inPort.bits.entryIdxOH := driver._2
     })
   }
+
   for(((outPort,driver), idx) <- io.issueInfo.zip(selectorSeq).zipWithIndex){
     val shouldBeSuppressed = driver.io.out.bits.info.robPtr.needFlush(io.redirect)
-    val tokenAllocator = if(mayBeBlocked) Some(Module(new IssueTokenAllocator(issueNum, cfg.fuConfigs.length))) else None
+    val tokenAllocator = if(mayBeBlocked) Some(Module(new IssueTokenAllocator(cfg.releaseWidth))) else None
     val outValid = Wire(Bool())
     if(mayBeBlocked){
       tokenAllocator.get.io.redirect := io.redirect
       tokenAllocator.get.io.release := io.tokenRelease.get(idx)
       tokenAllocator.get.io.request.valid := driver.io.out.valid && !shouldBeSuppressed
-      tokenAllocator.get.io.request.bits.pdest := driver.io.out.bits.info.pdest
-      tokenAllocator.get.io.request.bits.robPtr := driver.io.out.bits.info.robPtr
+      tokenAllocator.get.io.request.bits := driver.io.out.bits.info.robPtr
       outValid := tokenAllocator.get.io.grant.valid
       outPort.bits.fuSel := tokenAllocator.get.io.grant.bits
     } else {

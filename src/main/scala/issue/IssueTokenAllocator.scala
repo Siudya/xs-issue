@@ -24,7 +24,7 @@ class IssueTokenAllocator(tokenNum:Int) extends Module{
         entry.valid := false.B
       }.elsewhen(allocateCond){
         entry.valid := true.B
-        entry.bits := io.request.bits.robPtr
+        entry.bits := io.request.bits
       }
   })
   io.grant.valid := io.request.valid & emptyIdx.valid

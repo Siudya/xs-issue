@@ -14,7 +14,7 @@ class IntegerReservationStation(implicit p: Parameters) extends LazyModule{
   val enqNode = new RsDispatchNode(Seq(DispatchParam("Integer", bankNum)))
   val issueNode = new RsIssueNode(Seq.fill(issueNum)(None))
   private val rsParam = RsParam(48, 4, bankNum)
-  override def module = new IntegerReservationStationImpl(this, rsParam)
+  lazy val module = new IntegerReservationStationImpl(this, rsParam)
 }
 class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsParam) extends LazyModuleImp(outer) with XSParam {
   require(param.bankNum == 4)
@@ -63,8 +63,13 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     val snCfg = elm.head._2
     val mod = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, snIssueNum, snCfg, Some(s"Integer${snName}SelectNetwork")))
     mod.io.redirect := io.redirect
+    if(ExuType.maybeBlockType.contains(elm.head._2.exuType)){
+      for((sink, source) <- mod.io.tokenRelease.get.zip(elm)) {
+        sink := source._1.release
+      }
+    }
     if(elm.head._2.latency != Int.MaxValue){
-      val wkq = Seq.fill(snIssueNum)(Module(new WakeupQueue(elm.head._2.latency - 1)))
+      val wkq = Seq.fill(snIssueNum)(Module(new WakeupQueue(elm.head._2.latency)))
       for(((q, sink), source) <- wkq.zip(internalWakeup.slice(internalWakeupPtr, internalWakeupPtr + snIssueNum)).zip(mod.io.issueInfo)){
         q.io.redirect := io.redirect
         q.io.in.valid := source.valid & source.bits.info.rfWen
@@ -126,8 +131,8 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
       when(issueBundle.valid) {
         issR_elm.bits := issueBundle.bits
       }
-      iss_elm._1.valid := issR_elm.valid
-      iss_elm._1.bits := issR_elm.bits
+      iss_elm._1.uop.valid := issR_elm.valid
+      iss_elm._1.uop.bits := issR_elm.bits
 
       rbAddrPortsForThisPort.zipWithIndex.foreach({case(rb,bidx) =>
         rb.valid := sn.io.issueInfo.head.valid & sn.io.issueInfo.head.bits.bankIdxOH(bidx + portIdx * bn)

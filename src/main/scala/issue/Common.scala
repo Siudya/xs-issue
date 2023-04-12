@@ -1,5 +1,6 @@
 package issue
 import chisel3._
+import chisel3.util._
 import common._
 
 abstract class BasicStatusArrayEntry(val srcNum:Int, isIntSrc:Boolean) extends XSBundle{
@@ -50,3 +51,7 @@ case class DispatchParam
   name: String,
   width: Int
 )
+class IssueBundle(rlsWidth:Int) extends XSBundle{
+  val uop = Valid(new MicroOp)
+  val release = Input(UInt(rlsWidth.W))
+}

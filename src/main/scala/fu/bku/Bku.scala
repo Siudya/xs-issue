@@ -22,10 +22,6 @@ import chisel3.util._
 import common.XSModule
 import fu.{FunctionUnit, HasPipelineReg}
 import xs.utils._
-import xiangshan.backend.fu.util._
-
-
-
 
 class CountModule(implicit p: Parameters) extends XSModule {
   val io = IO(new Bundle() {

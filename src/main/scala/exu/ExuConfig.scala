@@ -12,10 +12,24 @@ object ExuType{
   def std = 6
   def fmisc = 7
   def fmac = 8
+
+  private val mapping = Map(
+    jmp -> "jmp",
+    alu -> "alu",
+    mul -> "mul",
+    div -> "div",
+    load -> "load",
+    sta -> "sta",
+    std -> "std",
+    fmisc -> "fmisc",
+    fmac -> "fmac"
+  )
+
   def intType: Seq[Int] = Seq(jmp, alu, mul, div)
   def memType: Seq[Int] = Seq(load, sta, std)
   def fpType: Seq[Int] = Seq(fmisc, fmac)
   def maybeBlockType:Seq[Int] = Seq(div, fmac, fmisc)
+  def typeToString(in:Int):String = mapping(in)
 }
 
 case class ExuConfig
@@ -26,8 +40,12 @@ case class ExuConfig
   fuConfigs: Seq[FuConfig],
   exuType:Int,
   srcNum:Int,
+  releaseWidth:Int = 0
 ){
   val hasFastWakeup: Boolean = fuConfigs.map(_.latency).max != Int.MaxValue
   val latency: Int = fuConfigs.map(_.latency).max
   val exceptionOut: Seq[Int] = fuConfigs.map(_.exceptionOut).reduce(_ ++ _).distinct.sorted
+
+  override def toString = s"${name} #${id} belongs to ${blockName}:\n\tsrcNum: ${srcNum} Type: ${ExuType.typeToString(exuType)}\n" +
+    s"\t" + fuConfigs.toString()
 }

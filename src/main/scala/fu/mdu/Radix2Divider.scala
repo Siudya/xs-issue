@@ -19,10 +19,10 @@ package fu.mdu
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import fu.FunctionUnit
+import fu.DecoupledFunctionUnit
 import xs.utils.SignExt
 
-abstract class AbstractDivider(len: Int)(implicit p: Parameters) extends FunctionUnit(len){
+abstract class AbstractDivider(len: Int)(implicit p: Parameters) extends DecoupledFunctionUnit(len){
   val ctrl = IO(Input(new MulDivCtrl))
   val sign = ctrl.sign
 }

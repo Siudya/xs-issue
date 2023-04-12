@@ -18,7 +18,6 @@ package fu.bku
 
 import chisel3._
 import chisel3.util._
-import xiangshan._
 import chipsalliance.rocketchip.config.Parameters
 
 // 32bits shift right

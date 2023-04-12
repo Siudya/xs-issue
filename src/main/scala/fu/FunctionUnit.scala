@@ -20,17 +20,38 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import common._
-class FunctionUnitIO(val len: Int)(implicit p: Parameters) extends XSBundle {
-  val in = Flipped(ValidIO(new ExuInput(len)))
-  val out = ValidIO(new ExuOutput)
+
+class FuOutput(val len: Int)(implicit p: Parameters) extends XSBundle {
+  val data = UInt(len.W)
+  val uop = new MicroOp
+}
+
+class FuInput(val len: Int)(implicit p: Parameters) extends XSBundle {
+  val uop = new MicroOp
+  val src = Vec(3, UInt(len.W))
+}
+
+class FunctionUnitIO(val len:Int)(implicit p: Parameters) extends XSBundle {
+  val in = Flipped(ValidIO(new FuInput(len)))
+  val out = ValidIO(new FuOutput(len))
   val redirectIn = Flipped(ValidIO(new Redirect))
 }
 
-abstract class FunctionUnit(len: Int = 64)(implicit p: Parameters) extends XSModule {
+class DecoupledFunctionUnitIO(val len:Int)(implicit p: Parameters) extends XSBundle {
+  val in = Flipped(DecoupledIO(new FuInput(len)))
+  val out = DecoupledIO(new FuOutput(len))
+  val redirectIn = Flipped(ValidIO(new Redirect))
+}
+
+abstract class FunctionUnit(len:Int = 64)(implicit p: Parameters) extends XSModule {
   val io = IO(new FunctionUnitIO(len))
 }
 
-abstract class FUWithRedirect(len: Int = 64)(implicit p: Parameters) extends FunctionUnit(len: Int) with HasRedirectOut
+abstract class DecoupledFunctionUnit(len:Int = 64)(implicit p: Parameters) extends XSModule {
+  val io = IO(new DecoupledFunctionUnitIO(len))
+}
+
+abstract class FUWithRedirect(len:Int = 64)(implicit p: Parameters) extends FunctionUnit(len) with HasRedirectOut
 
 trait HasRedirectOut { this: XSModule =>
   val redirectOutValid = IO(Output(Bool()))

@@ -1,7 +1,10 @@
 package common
 
+import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
+import exu.ExuConfig
+import fu.{FuConfig, FuInput}
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, SignExt, ZeroExt}
 
 class FtqPtr extends CircularQueuePtr[FtqPtr](64)
@@ -293,12 +296,15 @@ class MicroOp extends CfCtrl {
   val lqIdx = new LqPtr
   val sqIdx = new SqPtr
   val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
-  val fuSel = UInt(log2Ceil(maxFuNumInExu).W)
+  val fuSel = UInt(maxFuNumInExu.W)
 }
 
-class ExuInput(srcNum:Int) extends XSBundle {
-  val uop = new MicroOp
-  val src = Vec(srcNum, UInt(XLEN.W))
+class ExuInput(rlsWidth:Int) extends XSBundle {
+  val fuInput = Flipped(Valid(new Bundle{
+    val uop = new MicroOp
+    val src = Vec(3, UInt(XLEN.W))
+  }))
+  val release = Output(UInt(rlsWidth.W))
 }
 
 class ExuOutput extends XSBundle {
@@ -324,6 +330,8 @@ trait XSParam{
   val VAddrBits = 39
   val AsidLength = 16
   val maxFuNumInExu = 8
+  val FtqSize = 64
+  val divNumInOneExu = 3
 }
 class XSBundle extends Bundle with XSParam
 class XSModule extends Module with XSParam
