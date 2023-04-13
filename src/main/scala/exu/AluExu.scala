@@ -14,8 +14,7 @@ class AluExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicEx
     id = id,
     blockName = "IntegerBlock",
     fuConfigs = Seq(FuConfigs.aluCfg),
-    exuType = ExuType.alu,
-    srcNum = 2
+    exuType = ExuType.alu
   )
   val issueNode = new ExuInputNode(cfg)
   val writebackNode = new ExuOutNode(cfg)
@@ -24,7 +23,6 @@ class AluExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicEx
 }
 class AluExuImpl(outer:AluExu)(implicit p:Parameters) extends BasicExuImpl(outer){
   val io = IO(new Bundle{
-    val redirectOut = Output(Valid(new Redirect))
     val bypassIn = Input(Vec(outer.bypassInNum, Valid(new ExuOutput))) //Alu does not need bypass out for its latency is 0. Bypassing in regfile is enough.
   })
   private val issuePort = outer.issueNode.in.head._1
@@ -47,6 +45,7 @@ class AluExuImpl(outer:AluExu)(implicit p:Parameters) extends BasicExuImpl(outer
   }
 
   private val alu = Module(new Alu)
+  alu.io.redirectIn := redirectIn
   alu.io.in.valid := finalIssueSignals.valid
   alu.io.in.bits.uop := finalIssueSignals.bits.uop
   alu.io.in.bits.src := finalIssueSignals.bits.src
@@ -55,7 +54,6 @@ class AluExuImpl(outer:AluExu)(implicit p:Parameters) extends BasicExuImpl(outer
   writebackPort.valid := alu.io.out.valid
   writebackPort.bits.uop := alu.io.out.bits.uop
   writebackPort.bits.data := alu.io.out.bits.data
-  alu.io.redirectIn := redirectIn
-  io.redirectOut.valid := alu.redirectOutValid
-  io.redirectOut.bits := alu.redirectOut
+  writebackPort.bits.redirectValid := alu.redirectOutValid
+  writebackPort.bits.redirect := alu.redirectOut
 }

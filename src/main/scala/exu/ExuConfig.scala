@@ -39,12 +39,19 @@ case class ExuConfig
   blockName: String, // NOTE: for perf counter
   fuConfigs: Seq[FuConfig],
   exuType:Int,
-  srcNum:Int,
   releaseWidth:Int = 0
 ){
+  val srcNum:Int = fuConfigs.map(_.srcCnt).max
   val hasFastWakeup: Boolean = fuConfigs.map(_.latency).max != Int.MaxValue
   val latency: Int = fuConfigs.map(_.latency).max
   val exceptionOut: Seq[Int] = fuConfigs.map(_.exceptionOut).reduce(_ ++ _).distinct.sorted
+  val writeIntRf = fuConfigs.map(_.writeIntRf).reduce(_||_)
+  val writeFpRf = fuConfigs.map(_.writeFpRf).reduce(_||_)
+  val wakeUpIntRs = fuConfigs.map(_.writeIntRf).reduce(_||_) && !hasFastWakeup
+  val wakeUpFpRs = fuConfigs.map(_.writeFpRf).reduce(_||_) && !hasFastWakeup
+  val wakeUpMemRs =  fuConfigs.map(e => e.writeIntRf || e.writeFpRf).reduce(_||_) && !hasFastWakeup
+  val writeFloatFlags = fuConfigs.map(_.writeFflags).reduce(_||_)
+  val hasRedirectOut = fuConfigs.map(_.hasRedirect).reduce(_||_)
 
   override def toString = s"${name} #${id} belongs to ${blockName}: srcNum: ${srcNum} Type: ${ExuType.typeToString(exuType)} " +
     s"\n\tFunction Units: " + fuConfigs.toString()

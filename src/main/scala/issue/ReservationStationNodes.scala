@@ -17,11 +17,5 @@ object RsDispatchNodeImpl extends SimpleNodeImp[Option[DispatchParam], DispatchP
   override def bundle(e: DispatchParam): Vec[DecoupledIO[MicroOp]] = Vec(e.width, DecoupledIO(new MicroOp))
   override def render(e: DispatchParam): RenderedEdge = RenderedEdge("#ff0000", e.name)
 }
-object RsWakeupNodeImpl extends SimpleNodeImp[ExuConfig,Option[ExuConfig],ExuConfig, Valid[WakeUpInfo]]{
-  override def edge(pd: ExuConfig, pu: Option[ExuConfig], p: config.Parameters, sourceInfo: SourceInfo) = pd
-  override def bundle(e: ExuConfig): Valid[WakeUpInfo] = Valid(new WakeUpInfo)
-  override def render(e: ExuConfig) = RenderedEdge("#0000ff", e.name)
-}
 class RsIssueNode(paramSeq:Seq[Option[ExuConfig]])(implicit valName: ValName) extends SourceNode(RsIssueNodeImpl)(paramSeq)
 class RsDispatchNode(paramSeq:Seq[DispatchParam])(implicit valName: ValName) extends SinkNode(RsDispatchNodeImpl)(paramSeq)
-class RsWakeupNode(paramSeq:Seq[Option[ExuConfig]])(implicit valName: ValName) extends SinkNode(RsWakeupNodeImpl)(paramSeq)

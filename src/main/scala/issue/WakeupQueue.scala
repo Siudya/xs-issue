@@ -6,7 +6,7 @@ class WakeupQueue(latency:Int) extends Module{
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
     val in = Input(Valid(new WakeUpInfo))
-    val out = Input(Valid(new WakeUpInfo))
+    val out = Output(Valid(new WakeUpInfo))
   })
   private def DelayInput(in:Valid[WakeUpInfo], l:Int): Valid[WakeUpInfo] = {
     val res = Wire(Valid(new WakeUpInfo))

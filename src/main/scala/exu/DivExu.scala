@@ -16,7 +16,6 @@ class DivExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicEx
     blockName = "IntegerBlock",
     fuConfigs = Seq.fill(divNumInOneExu)(FuConfigs.divCfg),
     exuType = ExuType.div,
-    srcNum = 2,
     releaseWidth = divNumInOneExu
   )
   val issueNode = new ExuInputNode(cfg)

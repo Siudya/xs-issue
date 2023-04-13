@@ -65,8 +65,13 @@ object xsutils extends MyCommonModule{
   override def millSourcePath = os.pwd / "xs-utils"
 }
 
+object fudian extends MyCommonModule{
+  override def moduleDeps = super.moduleDeps
+  override def millSourcePath = os.pwd / "fudian"
+}
+
 object `xs-issue` extends MyCommonModule{
-  override def moduleDeps = super.moduleDeps ++ Seq(xsutils)
+  override def moduleDeps = super.moduleDeps ++ Seq(xsutils, fudian)
   override def millSourcePath = os.pwd
 
   object test extends Tests with TestModule.ScalaTest {

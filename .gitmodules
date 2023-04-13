@@ -4,3 +4,6 @@
 [submodule "rocket-chip"]
 	path = rocket-chip
 	url = https://github.com/Siudya/rocket-chip.git
+[submodule "fudian"]
+	path = fudian
+	url = https://github.com/Siudya/fudian.git

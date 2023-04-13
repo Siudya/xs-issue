@@ -141,6 +141,7 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name
       inPort.bits.info := driver._1._1._2
       inPort.bits.bankIdxOH := driver._1._2
       inPort.bits.entryIdxOH := driver._2
+      inPort.bits.fuSel := DontCare
     })
   }
 

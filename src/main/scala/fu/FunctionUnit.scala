@@ -57,16 +57,26 @@ trait HasRedirectOut { this: XSModule =>
   val redirectOutValid = IO(Output(Bool()))
   val redirectOut = IO(Output(new Redirect))
 }
+trait PipelineBase {
+  def regEnable(i: Int): Bool
+  def PipelineReg[TT <: Data](i: Int)(next: TT) = RegEnable(
+    next,
+    enable = regEnable(i)
+  )
+  def S1Reg[TT <: Data](next: TT): TT = PipelineReg[TT](1)(next)
+  def S2Reg[TT <: Data](next: TT): TT = PipelineReg[TT](2)(next)
+  def S3Reg[TT <: Data](next: TT): TT = PipelineReg[TT](3)(next)
+  def S4Reg[TT <: Data](next: TT): TT = PipelineReg[TT](4)(next)
+  def S5Reg[TT <: Data](next: TT): TT = PipelineReg[TT](5)(next)
+}
 
-trait HasPipelineReg {
+trait HasPipelineReg extends PipelineBase{
   this: FunctionUnit =>
   def latency: Int
-
   require(latency > 0)
 
   val validVec = io.in.valid +: Seq.fill(latency)(RegInit(false.B))
   val uopVec = io.in.bits.uop +: Seq.fill(latency)(Reg(new MicroOp))
-
 
   // if flush(0), valid 0 will not given, so set flushVec(0) to false.B
   val flushVec = validVec.zip(uopVec).map(x => x._1 && x._2.robIdx.needFlush(io.redirectIn))
@@ -84,19 +94,37 @@ trait HasPipelineReg {
   io.out.bits.uop := uopVec.takeRight(2).head
 
   def regEnable(i: Int): Bool = validVec(i - 1) && !flushVec(i - 1)
+}
 
-  def PipelineReg[TT <: Data](i: Int)(next: TT) = RegEnable(
-    next,
-    enable = regEnable(i)
-  )
+trait HasDecoupledPipelineReg extends PipelineBase{
+  this: DecoupledFunctionUnit =>
+  def latency: Int
+  require(latency > 0)
 
-  def S1Reg[TT <: Data](next: TT): TT = PipelineReg[TT](1)(next)
+  val validVec = io.in.valid +: Array.fill(latency)(RegInit(false.B))
+  val rdyVec = (Array.fill(latency - 1)(Wire(Bool())) :+ io.out.ready) :+ WireInit(true.B)
+  val uopVec = io.in.bits.uop +: Array.fill(latency)(Reg(new MicroOp))
 
-  def S2Reg[TT <: Data](next: TT): TT = PipelineReg[TT](2)(next)
 
-  def S3Reg[TT <: Data](next: TT): TT = PipelineReg[TT](3)(next)
+  // if flush(0), valid 0 will not given, so set flushVec(0) to false.B
+  val flushVec = validVec.zip(uopVec).map(x => x._1 && x._2.robIdx.needFlush(io.redirectIn))
 
-  def S4Reg[TT <: Data](next: TT): TT = PipelineReg[TT](4)(next)
+  for (i <- 0 until latency - 1) {
+    rdyVec(i) := !validVec(i + 1) || rdyVec(i + 1)
+  }
 
-  def S5Reg[TT <: Data](next: TT): TT = PipelineReg[TT](5)(next)
+  for (i <- 1 to latency) {
+    when(rdyVec(i - 1) && validVec(i - 1) && !flushVec(i - 1)) {
+      validVec(i) := validVec(i - 1)
+      uopVec(i) := uopVec(i - 1)
+    }.elsewhen(flushVec(i) || rdyVec(i)) {
+      validVec(i) := false.B
+    }
+  }
+
+  io.in.ready := rdyVec(0)
+  io.out.valid := validVec.takeRight(2).head
+  io.out.bits.uop := uopVec.takeRight(2).head
+
+  def regEnable(i: Int): Bool = validVec(i - 1) && rdyVec(i - 1) && !flushVec(i - 1)
 }

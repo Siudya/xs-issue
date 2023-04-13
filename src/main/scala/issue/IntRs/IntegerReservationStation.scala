@@ -6,24 +6,23 @@ import common.{MicroOp, Redirect, XSParam}
 import exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import issue._
+import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 
-class IntegerReservationStation(implicit p: Parameters) extends LazyModule with XSParam{
-
-  private val bankNum = 4
-  private val issueNum = 7
-  private val wakeupNum = 1
-  val enqNode = new RsDispatchNode(Seq(DispatchParam("Integer", bankNum)))
+class IntegerReservationStation(bankNum:Int)(implicit p: Parameters) extends LazyModule with XSParam{
+  private val issueNum = 8
+  private val wbNodeParam = WriteBackSinkParam(name = "Integer RS", sinkType = WriteBackSinkType.intRs)
   val issueNode = new RsIssueNode(Seq.fill(issueNum)(None))
-  val wakeupNode = new RsWakeupNode(Seq.fill(wakeupNum)(None))
+  val wakeupNode = new WriteBackSinkNode(wbNodeParam)
   private val rsParam = RsParam(48, bankNum)
   lazy val module = new IntegerReservationStationImpl(this, rsParam)
 }
+
 class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsParam) extends LazyModuleImp(outer) with XSParam {
   require(param.bankNum == 4)
   require(param.entriesNum % param.bankNum == 0)
-  private val enq = outer.enqNode.in
   private val issue = outer.issueNode.out
-  private val wakeup = outer.wakeupNode.in
+  private val wbIn = outer.wakeupNode.in.head
+  private val wakeup = wbIn._1.zip(wbIn._2)
   issue.foreach(elm => require(ExuType.intType.contains(elm._2.exuType)))
   private val jmpIssue = issue.filter(_._2.exuType == ExuType.jmp)
   private val aluIssue = issue.filter(_._2.exuType == ExuType.alu)
@@ -41,6 +40,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
 
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
+    val enq = Vec(param.bankNum, Flipped(DecoupledIO(new MicroOp)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
     val specWakeup = Output(Vec(internalWakeupNum, Valid(new WakeUpInfo)))
@@ -50,7 +50,14 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
   io.specWakeup := internalWakeup
   private var internalWakeupPtr = 0
 
-  private val wakeupSignals = VecInit(wakeup.map(_._1))
+  private val wakeupSignals = VecInit(wakeup.map(_._1).map(elm =>{
+    val wkp = Wire(Valid(new WakeUpInfo))
+    wkp.valid := elm.valid
+    wkp.bits.pdest := elm.bits.uop.pdest
+    wkp.bits.robPtr := elm.bits.uop.robIdx
+    wkp.bits.lpv := 0.U.asTypeOf(wkp.bits.lpv)
+    wkp
+  }))
   private val rsBankSeq = Seq.tabulate(param.bankNum)( _ => {
     val mod = Module(new IntegerReservationStationBank(entriesNumPerBank, issueTypeNum, internalWakeupNum + wakeup.length, loadUnitNum))
     mod.io.redirect := io.redirect
@@ -86,7 +93,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     mod
   })
 
-  allocateNetwork.io.enqFromDispatch.zip(enq.head._1).foreach({case(sink, source) =>
+  allocateNetwork.io.enqFromDispatch.zip(io.enq).foreach({case(sink, source) =>
     sink.valid := source.valid
     sink.bits := source.bits
     source.ready := sink.ready

@@ -2,8 +2,7 @@ package exu
 import chisel3._
 import chisel3.util._
 import chipsalliance.rocketchip.config.Parameters
-import common.{ExuOutput, FuType, Redirect, XSParam}
-import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, LazyModuleImpLike}
+import common.{ExuOutput, FuType, XSParam}
 import fu.FuConfigs
 import fu.bku.Bku
 import fu.mdu.{ArrayMultiplier, MDUOpType}
@@ -16,8 +15,7 @@ class MulExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicEx
     id = id,
     blockName = "IntegerBlock",
     fuConfigs = Seq(FuConfigs.mulCfg, FuConfigs.bkuCfg),
-    exuType = ExuType.mul,
-    srcNum = 2
+    exuType = ExuType.mul
   )
   val issueNode = new ExuInputNode(cfg)
   val writebackNode = new ExuOutNode(cfg)
