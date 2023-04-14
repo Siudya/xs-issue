@@ -27,7 +27,7 @@ class FakeTop(implicit p:Parameters) extends LazyModule{
   private val regFile = LazyModule(new Regfile(32, "Int", "Integer Regfile"))
   private val alus = Seq.tabulate(4)(idx => LazyModule(new AluExu(idx, 0)))
   private val muls = Seq.tabulate(2)(idx => LazyModule(new MulExu(idx, 0)))
-  private val divs = Seq.tabulate(1)(idx => LazyModule(new DivExu(idx, 0)))
+  private val divs = Seq.tabulate(2)(idx => LazyModule(new DivExu(idx, 0)))
   private val jmps = Seq.tabulate(1)(idx => LazyModule(new JmpCsrExu(idx, 0)))
   private val exus = alus ++ muls ++ divs ++ jmps
 

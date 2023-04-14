@@ -25,9 +25,9 @@ object ExuType{
     fmac -> "fmac"
   )
 
-  def intType: Seq[Int] = Seq(jmp, alu, mul, div)
-  def memType: Seq[Int] = Seq(load, sta, std)
-  def fpType: Seq[Int] = Seq(fmisc, fmac)
+  def intTypes: Seq[Int] = Seq(jmp, alu, mul, div)
+  def memTypes: Seq[Int] = Seq(load, sta, std)
+  def fpTypes: Seq[Int] = Seq(fmisc, fmac)
   def maybeBlockType:Seq[Int] = Seq(div, fmac, fmisc)
   def typeToString(in:Int):String = mapping(in)
 }
@@ -52,6 +52,9 @@ case class ExuConfig
   val wakeUpMemRs =  fuConfigs.map(e => e.writeIntRf || e.writeFpRf).reduce(_||_) && !hasFastWakeup
   val writeFloatFlags = fuConfigs.map(_.writeFflags).reduce(_||_)
   val hasRedirectOut = fuConfigs.map(_.hasRedirect).reduce(_||_)
+  val isIntType = ExuType.intTypes.contains(exuType)
+  val isMemType = ExuType.memTypes.contains(exuType)
+  val isFpType = ExuType.fpTypes.contains(exuType)
 
   override def toString = s"${name} #${id} belongs to ${blockName}: srcNum: ${srcNum} Type: ${ExuType.typeToString(exuType)} " +
     s"\n\tFunction Units: " + fuConfigs.toString()

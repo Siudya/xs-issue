@@ -6,21 +6,38 @@ import chisel3.internal.sourceinfo.SourceInfo
 import chisel3.util._
 import common.{ExuInput, ExuOutput, MicroOp}
 import exu.ExuConfig
-import issue.IssueBundle
+import issue.{IssueBundle, RsParam}
 
-object RegfileInwardImpl extends InwardNodeImp[Option[ExuConfig],ExuConfig,ExuConfig,IssueBundle]{
-  override def edgeI(pd: Option[ExuConfig], pu: ExuConfig, p: config.Parameters, sourceInfo: SourceInfo) = pu
-  override def bundleI(ei: ExuConfig) = new IssueBundle(ei.releaseWidth)
-  override def render(e: ExuConfig) = RenderedEdge("#00ff00", e.name)
+object RegfileInwardImpl extends InwardNodeImp[RsParam,Seq[ExuConfig],Seq[ExuConfig],MixedVec[IssueBundle]]{
+
+  override def edgeI(pd: RsParam, pu: Seq[ExuConfig], p: config.Parameters, sourceInfo: SourceInfo): Seq[ExuConfig] = {
+    require(pd.isLegal)
+    if(pd.isIntRs){
+      pu.filter(_.isIntType)
+    } else if(pd.isMemRs) {
+      pu.filter(_.isMemType)
+    } else {
+      pu.filter(_.isFpType)
+    }
+  }
+
+  override def bundleI(ei: Seq[ExuConfig]): MixedVec[IssueBundle] = MixedVec(ei.map(elm => new IssueBundle(elm.releaseWidth)))
+
+  override def render(e: Seq[ExuConfig]): RenderedEdge = {
+    val edgeName = if(e.head.isIntType)"Int" else if(e.head.isFpType) "Fp" else "Mem"
+    RenderedEdge("#0000ff", edgeName + "Issue")
+  }
 }
-object RegfileOutwardImpl extends OutwardNodeImp[Option[ExuConfig],ExuConfig,ExuConfig,ExuInput]{
-  override def edgeO(pd: Option[ExuConfig], pu: ExuConfig, p: config.Parameters, sourceInfo: SourceInfo) = pu
-  override def bundleO(eo: ExuConfig): ExuInput = new ExuInput(eo.releaseWidth)
+object RegfileOutwardImpl extends OutwardNodeImp[Option[RsParam],ExuConfig,ExuConfig,IssueBundle]{
+
+  override def edgeO(pd: Option[RsParam], pu: ExuConfig, p: config.Parameters, sourceInfo: SourceInfo): ExuConfig = pu
+
+  override def bundleO(eo: ExuConfig): IssueBundle = new IssueBundle(eo.releaseWidth)
 }
 
 class RegfileIssueNode(implicit valName: ValName)
-  extends MixedAdapterNode(
+  extends MixedNexusNode(
     inner = RegfileInwardImpl, outer = RegfileOutwardImpl
   )(
-    {p:Option[ExuConfig] =>p}, {p:ExuConfig =>p}
+    {p:Seq[RsParam] => None}, {p:Seq[ExuConfig] =>p}
   )

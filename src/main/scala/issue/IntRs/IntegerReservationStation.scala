@@ -11,19 +11,20 @@ import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 class IntegerReservationStation(bankNum:Int)(implicit p: Parameters) extends LazyModule with XSParam{
   private val issueNum = 8
   private val wbNodeParam = WriteBackSinkParam(name = "Integer RS", sinkType = WriteBackSinkType.intRs)
-  val issueNode = new RsIssueNode(Seq.fill(issueNum)(None))
+  private val rsParam = RsParam(name = "Integer RS", RsType.int, 48, bankNum)
+  val issueNode = new RsIssueNode(rsParam)
   val wakeupNode = new WriteBackSinkNode(wbNodeParam)
-  private val rsParam = RsParam(48, bankNum)
+
   lazy val module = new IntegerReservationStationImpl(this, rsParam)
 }
 
 class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsParam) extends LazyModuleImp(outer) with XSParam {
   require(param.bankNum == 4)
   require(param.entriesNum % param.bankNum == 0)
-  private val issue = outer.issueNode.out
+  private val issue = outer.issueNode.out.head._1 zip outer.issueNode.out.head._2
   private val wbIn = outer.wakeupNode.in.head
   private val wakeup = wbIn._1.zip(wbIn._2)
-  issue.foreach(elm => require(ExuType.intType.contains(elm._2.exuType)))
+  issue.foreach(elm => require(ExuType.intTypes.contains(elm._2.exuType)))
   private val jmpIssue = issue.filter(_._2.exuType == ExuType.jmp)
   private val aluIssue = issue.filter(_._2.exuType == ExuType.alu)
   private val mulIssue = issue.filter(_._2.exuType == ExuType.mul)
@@ -33,7 +34,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
   require(aluIssue.nonEmpty && aluIssue.length <= param.bankNum && (param.bankNum % aluIssue.length) == 0)
   require(mulIssue.nonEmpty && mulIssue.length <= param.bankNum && (param.bankNum % mulIssue.length) == 0)
   require(divIssue.nonEmpty && divIssue.length <= param.bankNum && (param.bankNum % divIssue.length) == 0)
-  private val issueTypeNum = ExuType.intType.length
+  private val issueTypeNum = ExuType.intTypes.length
   private val issueNumForEachFu = issuePortList.map(_.length)
   private val internalWakeupNum = issue.count(elm => elm._2.latency != Int.MaxValue)
   private val entriesNumPerBank = param.entriesNum / param.bankNum
@@ -75,7 +76,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     mod.io.redirect := io.redirect
     if(ExuType.maybeBlockType.contains(elm.head._2.exuType)){
       for((sink, source) <- mod.io.tokenRelease.get.zip(elm)) {
-        sink := source._1.release
+        sink := source._1.feedback.release
       }
     }
     if(elm.head._2.latency != Int.MaxValue){
@@ -114,13 +115,14 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     })
   })
 
-  private val issRegs = Seq.tabulate(issueTypeNum)(idx =>
-    RegInit(VecInit(Seq.tabulate(issueNumForEachFu(idx))(_ => 0.U.asTypeOf(Valid(new MicroOp)))))
+  private val issRegs = issuePortList.map(p =>
+    Reg(MixedVec(p.map(n => new IssueBundle(n._2.releaseWidth))))
   )
 
   for((((iss, issR), sn), fuIdx) <- issuePortList.zip(issRegs).zip(selectNetworkSeq).zipWithIndex){
     for(((iss_elm, issR_elm), portIdx) <- iss.zip(issR).zipWithIndex){
-      val issueBundle = Wire(Valid(new MicroOp))
+      val issueBundle = Wire(new IssueBundle(iss_elm._2.releaseWidth))
+      issueBundle := DontCare
       val rbIssAddrPorts = rsBankSeq.map(_.io.issueAddr(fuIdx))
       val rbIssDataPorts = rsBankSeq.map(_.io.issueData(fuIdx))
       val bn = param.bankNum / iss.length
@@ -128,22 +130,26 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
       val rbDataPortsForThisPort = rbIssDataPorts.slice(portIdx * bn, portIdx * bn + bn)
       val selectResps = sn.io.issueInfo(portIdx)
 
-      issueBundle.valid := selectResps.valid
-      issueBundle.bits := Mux1H(rbDataPortsForThisPort.map(elm => (elm.valid, elm.bits)))
-      issueBundle.bits.robIdx := selectResps.bits.info.robPtr
-      issueBundle.bits.ctrl.rfWen := selectResps.bits.info.rfWen
-      issueBundle.bits.ctrl.fpWen := selectResps.bits.info.fpWen
-      issueBundle.bits.pdest := selectResps.bits.info.pdest
-      issueBundle.bits.ctrl.fuType := selectResps.bits.info.fuType
-      issueBundle.bits.lpv := selectResps.bits.info.lpv
-      issueBundle.bits.fuSel := selectResps.bits.fuSel
+      issueBundle.issue.valid := selectResps.valid
+      issueBundle.issue.uop := Mux1H(rbDataPortsForThisPort.map(elm => (elm.valid, elm.bits)))
+      issueBundle.issue.uop.robIdx := selectResps.bits.info.robPtr
+      issueBundle.issue.uop.ctrl.rfWen := selectResps.bits.info.rfWen
+      issueBundle.issue.uop.ctrl.fpWen := selectResps.bits.info.fpWen
+      issueBundle.issue.uop.pdest := selectResps.bits.info.pdest
+      issueBundle.issue.uop.ctrl.fuType := selectResps.bits.info.fuType
+      issueBundle.issue.uop.lpv := selectResps.bits.info.lpv
+      issueBundle.issue.fuSel := selectResps.bits.fuSel
 
-      issR_elm.valid := issueBundle.valid
-      when(issueBundle.valid) {
-        issR_elm.bits := issueBundle.bits
+      val issValidDriverRegs = RegInit(false.B)
+      val issuePermitted = (!issValidDriverRegs) || iss_elm._1.fire
+      when(issuePermitted) {
+        issValidDriverRegs := issueBundle.issue.valid
       }
-      iss_elm._1.uop.valid := issR_elm.valid
-      iss_elm._1.uop.bits := issR_elm.bits
+      when(issuePermitted && issueBundle.issue.valid) {
+        issR_elm := issueBundle
+      }
+      iss_elm._1.issue := issR_elm
+      iss_elm._1.issue.valid := issValidDriverRegs
 
       rbAddrPortsForThisPort.zipWithIndex.foreach({case(rb,bidx) =>
         rb.valid := sn.io.issueInfo.head.valid & sn.io.issueInfo.head.bits.bankIdxOH(bidx + portIdx * bn)

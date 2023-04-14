@@ -2,6 +2,7 @@ package issue
 import chisel3._
 import chisel3.util._
 import common._
+import fu.fpu.{FMAMidResult, FMAMidResultIO}
 
 abstract class BasicStatusArrayEntry(val srcNum:Int, isIntSrc:Boolean) extends XSBundle{
   val psrc = Vec(srcNum, UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W))
@@ -37,19 +38,47 @@ class EarlyWakeUpInfo extends BasicWakeupInfo{
   val lpv = UInt(LpvLength.W)
 }
 
+object RsType{
+  def int = 0
+  def mem = 1
+  def fp = 2
+}
+
 case class RsParam
 (
+  name:String,
+  rsType:Int,
   entriesNum:Int = 48,
   //Unchangeable parameters
   bankNum:Int = 4
-)
+){
+  val isIntRs = rsType == RsType.int
+  val isMemRs = rsType == RsType.mem
+  val isFpRs = rsType == RsType.fp
+  val isLegal = isIntRs || isMemRs || isFpRs
+}
 
 case class DispatchParam
 (
   name: String,
   width: Int
 )
-class IssueBundle(rlsWidth:Int) extends XSBundle{
-  val uop = Valid(new MicroOp)
-  val release = Input(UInt(rlsWidth.W))
+class RsIssueBundle(fuSelWidth:Int) extends XSBundle{
+  val valid = Output(Bool())
+  val uop = Output(new MicroOp)
+  val src = Output(Vec(3, UInt(XLEN.W)))
+  val fuSel = Output(UInt(fuSelWidth.W))
+  val fmaMidState = ValidIO(new FMAMidResult)
+  val fmaWaitForAdd = Output(Bool())
+}
+class RsFeedbackBundle(fuSelWidth:Int) extends XSBundle{
+  val release = Input(UInt(fuSelWidth.W))
+  val fmaMidState = Flipped(ValidIO(new FMAMidResult))
+  val ready = Input(Bool())
+}
+
+class IssueBundle(fuSelWidth:Int) extends XSBundle {
+  val issue = Output(new RsIssueBundle(fuSelWidth))
+  val feedback = Input(new RsFeedbackBundle(fuSelWidth))
+  def fire:Bool = issue.valid & feedback.ready
 }

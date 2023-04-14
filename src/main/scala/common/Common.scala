@@ -299,12 +299,9 @@ class MicroOp extends CfCtrl {
   val fuSel = UInt(maxFuNumInExu.W)
 }
 
-class ExuInput(rlsWidth:Int) extends XSBundle {
-  val fuInput = Valid(new Bundle{
-    val uop = new MicroOp
-    val src = Vec(3, UInt(XLEN.W))
-  })
-  val release = Input(UInt(rlsWidth.W))
+class ExuInput extends XSBundle {
+  val uop = new MicroOp
+  val src = Vec(3, UInt(XLEN.W))
 }
 
 class ExuOutput extends XSBundle {

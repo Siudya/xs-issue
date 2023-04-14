@@ -33,19 +33,8 @@ class MulExuImpl(outer:MulExu)(implicit p:Parameters) extends BasicExuImpl(outer
   private val mul = Module(new ArrayMultiplier(XLEN + 1)(p))
   private val bku = Module(new Bku)
 
-  private val finalIssueSignals = WireInit(issuePort.fuInput)
-  if(outer.bypassInNum > 0) {
-    val bypass = io.bypassIn :+ writebackPort
-    val bypassData = bypass.map(_.bits.data)
-    val bypassSrc0Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.fuInput.bits.uop.psrc(0))
-    val bypassSrc1Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.fuInput.bits.uop.psrc(1))
-    val bypassSrc0Valid = Cat(bypassSrc0Hits).orR
-    val bypassSrc0Data = Mux1H(bypassSrc0Hits, bypassData)
-    val bypassSrc1Valid = Cat(bypassSrc1Hits).orR
-    val bypassSrc1Data = Mux1H(bypassSrc1Hits, bypassData)
-    finalIssueSignals.bits.src(0) := Mux(bypassSrc0Valid, bypassSrc0Data, issuePort.fuInput.bits.src(0))
-    finalIssueSignals.bits.src(1) := Mux(bypassSrc1Valid, bypassSrc1Data, issuePort.fuInput.bits.src(1))
-  }
+  issuePort.feedback.ready := true.B
+  private val finalIssueSignals = bypassSigGen(io.bypassIn :+ writebackPort, issuePort, outer.bypassInNum > 0)
 
   bku.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === FuType.bku
   bku.io.in.bits.uop := finalIssueSignals.bits.uop
@@ -98,6 +87,5 @@ class MulExuImpl(outer:MulExu)(implicit p:Parameters) extends BasicExuImpl(outer
   writebackPort.bits.uop := finalData.bits.uop
   writebackPort.bits.data := finalData.bits.data
   io.bypassOut := writebackPort
-
 //  xs_assert(PopCount(Cat(outSel)) === 1.U || Cat(outSel) === 0.U)
 }
