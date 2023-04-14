@@ -132,10 +132,11 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
       issueBundle.bits := Mux1H(rbDataPortsForThisPort.map(elm => (elm.valid, elm.bits)))
       issueBundle.bits.robIdx := selectResps.bits.info.robPtr
       issueBundle.bits.ctrl.rfWen := selectResps.bits.info.rfWen
-      issueBundle.bits.ctrl.rfWen := selectResps.bits.info.fpWen
+      issueBundle.bits.ctrl.fpWen := selectResps.bits.info.fpWen
       issueBundle.bits.pdest := selectResps.bits.info.pdest
       issueBundle.bits.ctrl.fuType := selectResps.bits.info.fuType
       issueBundle.bits.lpv := selectResps.bits.info.lpv
+      issueBundle.bits.fuSel := selectResps.bits.fuSel
 
       issR_elm.valid := issueBundle.valid
       when(issueBundle.valid) {

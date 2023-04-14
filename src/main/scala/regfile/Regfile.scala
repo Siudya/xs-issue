@@ -56,7 +56,11 @@ class RegfileImpl(outer: Regfile)(implicit p: Parameters) extends LazyModuleImp(
       val bypassOH = wbsWithBypass.map(_._1.bits.uop.pdest).zip(wbEnables).map({case(dst, en)=> en & dst === addr})
       val bypassData = Mux1H(bypassOH, writeBacks.map(_._1.bits.data))
       val bypassValid = Cat(bypassOH).orR
-      data := Mux(bypassValid, bypassData, mem(addr))
+      if(isInt){
+        data := Mux(addr === 0.U, 0.U, Mux(bypassValid, bypassData, mem(addr)))
+      }else{
+        data := Mux(bypassValid, bypassData, mem(addr))
+      }
       xs_assert(PopCount(bypassOH) === 1.U)
     })
     if(eo.srcNum < outBundle.fuInput.bits.src.length) outBundle.fuInput.bits.src.slice(eo.srcNum, outBundle.fuInput.bits.src.length).foreach(_ := DontCare)
