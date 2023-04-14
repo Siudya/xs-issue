@@ -46,20 +46,16 @@ class DivExuImpl(outer:DivExu) extends BasicExuImpl(outer) with XSParam{
     finalIssueSignals.bits.src(1) := Mux(bypassSrc1Valid, bypassSrc1Data, issuePort.fuInput.bits.src(1))
   }
 
-  private val releaseDriverRegs = RegInit(VecInit(Seq.fill(divNumInOneExu)(false.B)))
+  private val releaseDrivers = Wire(UInt(divNumInOneExu.W))
   private val divSel = finalIssueSignals.bits.uop.fuSel
   xs_assert(Mux(finalIssueSignals.valid, PopCount(divSel) === 1.U, true.B))
-  for((((div, en), arbIn), rlsReg) <- divs.zip(divSel.asBools).zip(outputArbiter.io.in).zip(releaseDriverRegs)){
+  for((((div, en), arbIn), rls) <- divs.zip(divSel.asBools).zip(outputArbiter.io.in).zip(releaseDrivers.asBools)){
     div.io.redirectIn := redirectIn
     div.io.in.valid := finalIssueSignals.valid & en
     div.io.in.bits.uop := finalIssueSignals.bits.uop
     div.io.in.bits.src := finalIssueSignals.bits.src
     arbIn <> div.io.out
-    when(div.io.out.fire){
-      rlsReg := true.B
-    }.elsewhen(rlsReg === true.B){
-      rlsReg := false.B
-    }
+    rls := div.io.out.fire
     xs_assert(Mux(div.io.in.valid, div.io.in.ready, true.B))
   }
   outputArbiter.io.out.ready := true.B
@@ -67,5 +63,5 @@ class DivExuImpl(outer:DivExu) extends BasicExuImpl(outer) with XSParam{
   writebackPort.valid := outputArbiter.io.out.valid
   writebackPort.bits.uop := outputArbiter.io.out.bits.uop
   writebackPort.bits.data := outputArbiter.io.out.bits.data
-  issuePort.release := Cat(releaseDriverRegs.reverse)
+  issuePort.release := releaseDrivers
 }
