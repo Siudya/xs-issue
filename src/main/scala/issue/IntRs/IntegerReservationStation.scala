@@ -1,10 +1,12 @@
 package issue.IntRs
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
+import chisel3.experimental.prefix
 import chisel3.util._
 import common.{MicroOp, Redirect, XSParam}
 import exu.ExuType
-import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
+import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, ValName}
+import freechips.rocketchip.macros.ValNameImpl
 import issue._
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 
@@ -48,6 +50,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
     val specWakeup = Output(Vec(internalWakeupNum, Valid(new WakeUpInfo)))
   })
+  io.enq.suggestName("new_enq")
 
   private val internalWakeup = Wire(Vec(internalWakeupNum, Valid(new WakeUpInfo)))
   io.specWakeup := internalWakeup
@@ -115,37 +118,39 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
   for(((iss, sn), fuIdx) <- issuePortList.zip(selectNetworkSeq).zipWithIndex){
     val rbIssAddrPorts = rsBankSeq.map(_.io.issueAddr(fuIdx))
     val rbIssDataPorts = rsBankSeq.map(_.io.issueData(fuIdx))
-    for((iss_elm, portIdx) <- iss.zipWithIndex){
-      val issueBundle = Wire(Valid(new MicroOp))
-      val bn = param.bankNum / iss.length
-      val rbAddrPortsForThisPort = rbIssAddrPorts.slice(portIdx * bn, portIdx * bn + bn)
-      val rbDataPortsForThisPort = rbIssDataPorts.slice(portIdx * bn, portIdx * bn + bn)
-      val selectResps = sn.io.issueInfo(portIdx)
+    for((iss_elm, portIdx) <- iss.zipWithIndex) {
+      prefix(s"${iss_elm._2.name}_${iss_elm._2.id}") {
+        val issueBundle = Wire(Valid(new MicroOp))
+        val bn = param.bankNum / iss.length
+        val rbAddrPortsForThisPort = rbIssAddrPorts.slice(portIdx * bn, portIdx * bn + bn)
+        val rbDataPortsForThisPort = rbIssDataPorts.slice(portIdx * bn, portIdx * bn + bn)
+        val selectResps = sn.io.issueInfo(portIdx)
 
-      issueBundle := DontCare
-      issueBundle.valid := selectResps.valid
-      issueBundle.bits := Mux1H(rbDataPortsForThisPort.map(elm => (elm.valid, elm.bits)))
-      issueBundle.bits.robIdx := selectResps.bits.info.robPtr
-      issueBundle.bits.ctrl.rfWen := selectResps.bits.info.rfWen
-      issueBundle.bits.ctrl.fpWen := selectResps.bits.info.fpWen
-      issueBundle.bits.pdest := selectResps.bits.info.pdest
-      issueBundle.bits.ctrl.fuType := selectResps.bits.info.fuType
-      issueBundle.bits.lpv := selectResps.bits.info.lpv
+        issueBundle := DontCare
+        issueBundle.valid := selectResps.valid
+        issueBundle.bits := Mux1H(rbDataPortsForThisPort.map(elm => (elm.valid, elm.bits)))
+        issueBundle.bits.robIdx := selectResps.bits.info.robPtr
+        issueBundle.bits.ctrl.rfWen := selectResps.bits.info.rfWen
+        issueBundle.bits.ctrl.fpWen := selectResps.bits.info.fpWen
+        issueBundle.bits.pdest := selectResps.bits.info.pdest
+        issueBundle.bits.ctrl.fuType := selectResps.bits.info.fuType
+        issueBundle.bits.lpv := selectResps.bits.info.lpv
 
-      val issueDrivers = Module(new DecoupledPipeline(!iss_elm._2.hasFastWakeup))
-      issueDrivers.io.redirect := io.redirect
-      issueDrivers.io.enq.valid := issueBundle.valid
-      issueDrivers.io.enq.bits := issueBundle.bits
+        val issueDriver = Module(new DecoupledPipeline(!iss_elm._2.hasFastWakeup))
+        issueDriver.io.redirect := io.redirect
+        issueDriver.io.enq.valid := issueBundle.valid
+        issueDriver.io.enq.bits := issueBundle.bits
 
-      iss_elm._1.setIssueDefault
-      iss_elm._1.issue.valid := issueDrivers.io.deq.valid
-      iss_elm._1.issue.bits.uop := issueDrivers.io.deq.bits
-      issueDrivers.io.deq.ready := iss_elm._1.issue.ready
+        iss_elm._1.setIssueDefault
+        iss_elm._1.issue.valid := issueDriver.io.deq.valid
+        iss_elm._1.issue.bits.uop := issueDriver.io.deq.bits
+        issueDriver.io.deq.ready := iss_elm._1.issue.ready
 
-      rbAddrPortsForThisPort.zipWithIndex.foreach({case(rb, bidx) =>
-        rb.valid := selectResps.bits.bankIdxOH(bidx + portIdx * bn) & selectResps.fire
-        rb.bits := selectResps.bits.entryIdxOH
-      })
+        rbAddrPortsForThisPort.zipWithIndex.foreach({ case (rb, bidx) =>
+          rb.valid := selectResps.bits.bankIdxOH(bidx + portIdx * bn) & selectResps.fire
+          rb.bits := selectResps.bits.entryIdxOH
+        })
+      }
     }
   }
 }
