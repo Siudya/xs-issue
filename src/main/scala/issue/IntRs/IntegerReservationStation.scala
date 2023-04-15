@@ -22,6 +22,8 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
   require(param.bankNum == 4)
   require(param.entriesNum % param.bankNum == 0)
   private val issue = outer.issueNode.out.head._1 zip outer.issueNode.out.head._2
+  println("Integer Reservation Issue Ports Config:")
+  outer.issueNode.out.head._2.foreach(cfg => println(cfg))
   private val wbIn = outer.wakeupNode.in.head
   private val wakeup = wbIn._1.zip(wbIn._2)
   issue.foreach(elm => require(ExuType.intTypes.contains(elm._2.exuType)))
@@ -74,11 +76,6 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     val snCfg = elm.head._2
     val mod = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, snIssueNum, snCfg, Some(s"Integer${snName}SelectNetwork")))
     mod.io.redirect := io.redirect
-    if(ExuType.maybeBlockType.contains(elm.head._2.exuType)){
-      for((sink, source) <- mod.io.tokenRelease.get.zip(elm)) {
-        sink := source._1.feedback.release
-      }
-    }
     if(elm.head._2.latency != Int.MaxValue){
       val wkq = Seq.fill(snIssueNum)(Module(new WakeupQueue(elm.head._2.latency)))
       for(((q, sink), source) <- wkq.zip(internalWakeup.slice(internalWakeupPtr, internalWakeupPtr + snIssueNum)).zip(mod.io.issueInfo)){
@@ -115,45 +112,39 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     })
   })
 
-  private val issRegs = issuePortList.map(p =>
-    Reg(MixedVec(p.map(n => new IssueBundle(n._2.releaseWidth))))
-  )
-
-  for((((iss, issR), sn), fuIdx) <- issuePortList.zip(issRegs).zip(selectNetworkSeq).zipWithIndex){
-    for(((iss_elm, issR_elm), portIdx) <- iss.zip(issR).zipWithIndex){
-      val issueBundle = Wire(new IssueBundle(iss_elm._2.releaseWidth))
-      issueBundle := DontCare
-      val rbIssAddrPorts = rsBankSeq.map(_.io.issueAddr(fuIdx))
-      val rbIssDataPorts = rsBankSeq.map(_.io.issueData(fuIdx))
+  for(((iss, sn), fuIdx) <- issuePortList.zip(selectNetworkSeq).zipWithIndex){
+    val rbIssAddrPorts = rsBankSeq.map(_.io.issueAddr(fuIdx))
+    val rbIssDataPorts = rsBankSeq.map(_.io.issueData(fuIdx))
+    for((iss_elm, portIdx) <- iss.zipWithIndex){
+      val issueBundle = Wire(Valid(new MicroOp))
       val bn = param.bankNum / iss.length
       val rbAddrPortsForThisPort = rbIssAddrPorts.slice(portIdx * bn, portIdx * bn + bn)
       val rbDataPortsForThisPort = rbIssDataPorts.slice(portIdx * bn, portIdx * bn + bn)
       val selectResps = sn.io.issueInfo(portIdx)
 
-      issueBundle.issue.valid := selectResps.valid
-      issueBundle.issue.uop := Mux1H(rbDataPortsForThisPort.map(elm => (elm.valid, elm.bits)))
-      issueBundle.issue.uop.robIdx := selectResps.bits.info.robPtr
-      issueBundle.issue.uop.ctrl.rfWen := selectResps.bits.info.rfWen
-      issueBundle.issue.uop.ctrl.fpWen := selectResps.bits.info.fpWen
-      issueBundle.issue.uop.pdest := selectResps.bits.info.pdest
-      issueBundle.issue.uop.ctrl.fuType := selectResps.bits.info.fuType
-      issueBundle.issue.uop.lpv := selectResps.bits.info.lpv
-      issueBundle.issue.fuSel := selectResps.bits.fuSel
+      issueBundle := DontCare
+      issueBundle.valid := selectResps.valid
+      issueBundle.bits := Mux1H(rbDataPortsForThisPort.map(elm => (elm.valid, elm.bits)))
+      issueBundle.bits.robIdx := selectResps.bits.info.robPtr
+      issueBundle.bits.ctrl.rfWen := selectResps.bits.info.rfWen
+      issueBundle.bits.ctrl.fpWen := selectResps.bits.info.fpWen
+      issueBundle.bits.pdest := selectResps.bits.info.pdest
+      issueBundle.bits.ctrl.fuType := selectResps.bits.info.fuType
+      issueBundle.bits.lpv := selectResps.bits.info.lpv
 
-      val issValidDriverRegs = RegInit(false.B)
-      val issuePermitted = (!issValidDriverRegs) || iss_elm._1.fire
-      when(issuePermitted) {
-        issValidDriverRegs := issueBundle.issue.valid
-      }
-      when(issuePermitted && issueBundle.issue.valid) {
-        issR_elm := issueBundle
-      }
-      iss_elm._1.issue := issR_elm
-      iss_elm._1.issue.valid := issValidDriverRegs
+      val issueDrivers = Module(new DecoupledPipeline(!iss_elm._2.hasFastWakeup))
+      issueDrivers.io.redirect := io.redirect
+      issueDrivers.io.enq.valid := issueBundle.valid
+      issueDrivers.io.enq.bits := issueBundle.bits
 
-      rbAddrPortsForThisPort.zipWithIndex.foreach({case(rb,bidx) =>
-        rb.valid := sn.io.issueInfo.head.valid & sn.io.issueInfo.head.bits.bankIdxOH(bidx + portIdx * bn)
-        rb.bits := sn.io.issueInfo.head.bits.entryIdxOH
+      iss_elm._1.setIssueDefault
+      iss_elm._1.issue.valid := issueDrivers.io.deq.valid
+      iss_elm._1.issue.bits.uop := issueDrivers.io.deq.bits
+      issueDrivers.io.deq.ready := iss_elm._1.issue.ready
+
+      rbAddrPortsForThisPort.zipWithIndex.foreach({case(rb, bidx) =>
+        rb.valid := selectResps.bits.bankIdxOH(bidx + portIdx * bn) & selectResps.fire
+        rb.bits := selectResps.bits.entryIdxOH
       })
     }
   }

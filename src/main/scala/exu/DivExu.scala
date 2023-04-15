@@ -8,6 +8,7 @@ import fu.{FuConfigs, FuOutput}
 import fu.alu.Alu
 import fu.mdu.DividerWrapper
 import xs.utils.Assertion.xs_assert
+import xs.utils.PickOneHigh
 
 class DivExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu with XSParam{
   private val cfg = ExuConfig(
@@ -32,19 +33,16 @@ class DivExuImpl(outer:DivExu) extends BasicExuImpl(outer) with XSParam{
   private val divs = Seq.fill(divNumInOneExu)(Module(new DividerWrapper(XLEN)))
   private val outputArbiter = Module(new Arbiter(new FuOutput(XLEN), divNumInOneExu))
 
-  issuePort.feedback.ready := true.B
   private val finalIssueSignals = bypassSigGen(io.bypassIn, issuePort, outer.bypassInNum > 0)
 
-  private val releaseDrivers = Wire(UInt(divNumInOneExu.W))
-  private val divSel = finalIssueSignals.bits.uop.fuSel
-  xs_assert(Mux(finalIssueSignals.valid, PopCount(divSel) === 1.U, true.B))
-  for((((div, en), arbIn), rls) <- divs.zip(divSel.asBools).zip(outputArbiter.io.in).zip(releaseDrivers.asBools)){
+  private val divSel = PickOneHigh(Cat(divs.map(_.io.in.ready).reverse))
+  issuePort.issue.ready := divSel.valid
+  for(((div, en), arbIn) <- divs.zip(Mux(divSel.valid, divSel.bits, 0.U).asBools).zip(outputArbiter.io.in)){
     div.io.redirectIn := redirectIn
     div.io.in.valid := finalIssueSignals.valid & en
     div.io.in.bits.uop := finalIssueSignals.bits.uop
     div.io.in.bits.src := finalIssueSignals.bits.src
     arbIn <> div.io.out
-    rls := div.io.out.fire
     xs_assert(Mux(div.io.in.valid, div.io.in.ready, true.B))
   }
   outputArbiter.io.out.ready := true.B
@@ -52,5 +50,4 @@ class DivExuImpl(outer:DivExu) extends BasicExuImpl(outer) with XSParam{
   writebackPort.valid := outputArbiter.io.out.valid
   writebackPort.bits.uop := outputArbiter.io.out.bits.uop
   writebackPort.bits.data := outputArbiter.io.out.bits.data
-  issuePort.feedback.release := releaseDrivers
 }

@@ -390,6 +390,7 @@ class Alu(implicit p: Parameters) extends FUWithRedirect {
   redirectOut.cfiUpdate.taken := dataModule.io.taken
   redirectOut.cfiUpdate.predTaken := uop.cf.pred_taken
 
+  io.in.ready := io.out.ready
   io.out.valid := io.in.valid
   io.out.bits.uop := io.in.bits.uop
   io.out.bits.data := dataModule.io.result

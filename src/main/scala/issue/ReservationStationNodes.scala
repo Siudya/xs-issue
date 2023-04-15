@@ -8,9 +8,9 @@ import common.{ExuOutput, MicroOp}
 import exu.ExuConfig
 
 
-object RsIssueNodeImpl extends SimpleNodeImp[RsParam, Seq[ExuConfig], Seq[ExuConfig], MixedVec[IssueBundle]]{
+object RsIssueNodeImpl extends SimpleNodeImp[RsParam, Seq[ExuConfig], Seq[ExuConfig], Vec[IssueBundle]]{
   override def edge(pd: RsParam, pu: Seq[ExuConfig], p: config.Parameters, sourceInfo: SourceInfo): Seq[ExuConfig] = pu
-  override def bundle(e: Seq[ExuConfig]): MixedVec[IssueBundle] = MixedVec(e.map(elm => new IssueBundle(elm.releaseWidth)))
+  override def bundle(e: Seq[ExuConfig]): Vec[IssueBundle] = Vec(e.length, new IssueBundle)
   override def render(e: Seq[ExuConfig]): RenderedEdge = RenderedEdge("#00ff00", "Integer Issue")
 }
 object RsDispatchNodeImpl extends SimpleNodeImp[Option[DispatchParam], DispatchParam, DispatchParam, Vec[DecoupledIO[MicroOp]]] {

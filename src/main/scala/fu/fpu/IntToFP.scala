@@ -23,6 +23,7 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import fu.FuConfigs.i2fCfg
+import fu.HasPipelineReg
 import xs.utils.{SignExt, ZeroExt}
 
 class IntToFPDataModule(latency: Int)(implicit p: Parameters) extends FPUDataModule {
@@ -77,7 +78,7 @@ class IntToFPDataModule(latency: Int)(implicit p: Parameters) extends FPUDataMod
   io.out.data := FPU.box(s3_out.data, s3_tag)
 }
 
-class IntToFP(implicit p: Parameters) extends FPUSubModuleAllPipeline {
+class IntToFP(implicit p: Parameters) extends FPUSubModule with HasPipelineReg {
   override def latency: Int = i2fCfg.latency
   override val dataModule = Module(new IntToFPDataModule(latency))
   connectDataModule

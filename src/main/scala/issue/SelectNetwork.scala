@@ -30,7 +30,6 @@ class SelectResp(bankIdxWidth:Int, entryIdxWidth:Int) extends XSBundle {
   val info = new SelectInfo
   val entryIdxOH = UInt(entryIdxWidth.W)
   val bankIdxOH = UInt(bankIdxWidth.W)
-  val fuSel = UInt(log2Ceil(maxFuNumInExu).W)
 }
 class SelectMux(bankIdxWidth:Int, entryIdxWidth:Int) extends Module{
   val io = IO(new Bundle{
@@ -110,13 +109,11 @@ class Selector(bankNum:Int, entryNum:Int, inputWidth:Int) extends Module{
 
 class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name:Option[String] = None) extends XSModule {
   require(issueNum <= bankNum && 0 < issueNum && bankNum % issueNum == 0, "Illegal number of issue ports are supported now!")
-  private val mayBeBlocked = ExuType.maybeBlockType.contains(cfg.exuType)
   private val fuTypeList = cfg.fuConfigs.map(_.fuType)
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
     val selectInfo = Input(Vec(bankNum,Vec(entryNum, Valid(new SelectInfo))))
     val issueInfo = Output(Vec(issueNum, Valid(new SelectResp(bankNum, entryNum))))
-    val tokenRelease = if(mayBeBlocked) Some(Input(Vec(issueNum, UInt(cfg.releaseWidth.W)))) else None
   })
   override val desiredName:String = name.getOrElse("SelectNetwork")
 
@@ -141,31 +138,15 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name
       inPort.bits.info := driver._1._1._2
       inPort.bits.bankIdxOH := driver._1._2
       inPort.bits.entryIdxOH := driver._2
-      inPort.bits.fuSel := DontCare
     })
   }
 
-  for(((outPort,driver), idx) <- io.issueInfo.zip(selectorSeq).zipWithIndex){
+  for((outPort,driver) <- io.issueInfo.zip(selectorSeq)){
     val shouldBeSuppressed = driver.io.out.bits.info.robPtr.needFlush(io.redirect)
-    val tokenAllocator = if(mayBeBlocked) Some(Module(new IssueTokenAllocator(cfg.releaseWidth))) else None
-    val outValid = Wire(Bool())
-    if(mayBeBlocked){
-      tokenAllocator.get.io.redirect := io.redirect
-      tokenAllocator.get.io.release := io.tokenRelease.get(idx)
-      tokenAllocator.get.io.request.valid := driver.io.out.valid && !shouldBeSuppressed
-      tokenAllocator.get.io.request.bits := driver.io.out.bits.info.robPtr
-      outValid := tokenAllocator.get.io.grant.valid
-      outPort.bits.fuSel := tokenAllocator.get.io.grant.bits
-    } else {
-      outValid := driver.io.out.valid && !shouldBeSuppressed
-      outPort.bits.fuSel := DontCare
-    }
-
-    outPort.valid := outValid
+    outPort.valid := driver.io.out.valid && !shouldBeSuppressed
     outPort.bits.bankIdxOH := driver.io.out.bits.bankIdxOH
     outPort.bits.entryIdxOH := driver.io.out.bits.entryIdxOH
     outPort.bits.info := driver.io.out.bits.info
-
   }
 
   private val flatInputInfoVec = VecInit(io.selectInfo.map(_.reverse).reverse.reduce(_++_))

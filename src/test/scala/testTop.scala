@@ -56,7 +56,6 @@ class FakeTop(implicit p:Parameters) extends LazyModule{
     integerReservationStation.module.io.enq <> io.enq
     io.redirectOut := writebackNetwork.module.io.redirectOut
     jmps.head.module.io.fenceio.sbuffer.sbIsEmpty := true.B
-    integerReservationStation.issueNode.out.foreach(edge => println(edge._2))
   }
 }
 

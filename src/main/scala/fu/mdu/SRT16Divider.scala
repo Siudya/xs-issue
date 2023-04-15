@@ -23,7 +23,7 @@ package fu.mdu
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import fu.DecoupledFunctionUnit
+import fu.FunctionUnit
 import xs.utils._
 
 class SRT16DividerDataModule(len: Int) extends Module {
@@ -467,7 +467,7 @@ class SRT16Divider(len: Int)(implicit p: Parameters) extends AbstractDivider(len
   io.out.bits.uop := uopReg
 }
 
-class DividerWrapper(len: Int)(implicit p: Parameters) extends DecoupledFunctionUnit(len) {
+class DividerWrapper(len: Int)(implicit p: Parameters) extends FunctionUnit(len) {
   val div = Module(new SRT16Divider(len))
 
   div.io <> io

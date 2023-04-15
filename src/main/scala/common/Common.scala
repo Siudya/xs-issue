@@ -296,7 +296,6 @@ class MicroOp extends CfCtrl {
   val lqIdx = new LqPtr
   val sqIdx = new SqPtr
   val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
-  val fuSel = UInt(maxFuNumInExu.W)
 }
 
 class ExuInput extends XSBundle {

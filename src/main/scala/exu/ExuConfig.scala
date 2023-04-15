@@ -28,7 +28,6 @@ object ExuType{
   def intTypes: Seq[Int] = Seq(jmp, alu, mul, div)
   def memTypes: Seq[Int] = Seq(load, sta, std)
   def fpTypes: Seq[Int] = Seq(fmisc, fmac)
-  def maybeBlockType:Seq[Int] = Seq(div, fmac, fmisc)
   def typeToString(in:Int):String = mapping(in)
 }
 

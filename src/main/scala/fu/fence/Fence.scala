@@ -88,6 +88,7 @@ class Fence(implicit p: Parameters) extends FunctionUnit {
   when (state === s_wait && func === FenceOpType.nofence  && sbEmpty) { state := s_nofence }
   when (state =/= s_idle && state =/= s_wait) { state := s_idle }
 
+  io.in.ready := state === s_idle
   io.out.valid := state =/= s_idle && state =/= s_wait
   io.out.bits.data := DontCare
   io.out.bits.uop := uop

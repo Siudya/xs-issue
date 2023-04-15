@@ -3,7 +3,7 @@ import chisel3._
 import chisel3.util._
 import chipsalliance.rocketchip.config.Parameters
 import common.{ExuOutput, FuType, Redirect, XSBundle, XSParam}
-import fu.FuConfigs
+import fu.{FuConfigs, FuOutput}
 import fu.jmp._
 import fu.fence._
 import fu.fpu.IntToFP
@@ -16,7 +16,7 @@ class FenceIO(implicit p: Parameters) extends XSBundle {
 }
 
 class JmpCsrExu (id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu{
-  private val cfg = ExuConfig(
+  val cfg = ExuConfig(
     name = "JmpExu",
     id = id,
     blockName = "IntegerBlock",
@@ -27,7 +27,7 @@ class JmpCsrExu (id:Int, val bypassInNum:Int)(implicit p:Parameters) extends Bas
   val writebackNode = new ExuOutNode(cfg)
   override lazy val module = new JmpCsrExuImpl(this)
 }
-class JmpCsrExuImpl(outer:JmpCsrExu)(implicit p:Parameters) extends BasicExuImpl(outer){
+class JmpCsrExuImpl(outer:JmpCsrExu)(implicit p:Parameters) extends BasicExuImpl(outer) with XSParam {
   val io = IO(new Bundle{
     val bypassIn = Input(Vec(outer.bypassInNum, Valid(new ExuOutput)))
     val fenceio = new FenceIO
@@ -37,23 +37,27 @@ class JmpCsrExuImpl(outer:JmpCsrExu)(implicit p:Parameters) extends BasicExuImpl
   private val fence = Module(new Fence)
   private val jmp = Module(new Jump)
   private val i2f = Module(new IntToFP)
+  private val outputArbiter = Module(new Arbiter(new FuOutput(XLEN), outer.cfg.fuConfigs.length))
 
-  issuePort.feedback.ready := true.B
   private val finalIssueSignals = bypassSigGen(io.bypassIn, issuePort, outer.bypassInNum > 0)
 
-  private val fuList = Seq(fence, jmp, i2f)
-  fuList.foreach(fu => {
+  private val fuList = Seq(jmp, fence, i2f)
+  private val fuReadies = outer.cfg.fuConfigs.zip(fuList).zip(outputArbiter.io.in).map({case((cfg, fu), arbIn) =>
+    val fuHit = finalIssueSignals.bits.uop.ctrl.fuType === cfg.fuType
     fu.io.redirectIn := redirectIn
-    fu.io.in.valid := finalIssueSignals.valid
+    fu.io.in.valid := finalIssueSignals.valid & fuHit
     fu.io.in.bits.uop := finalIssueSignals.bits.uop
     fu.io.in.bits.src := finalIssueSignals.bits.src
+    arbIn <> fu.io.out
+    fuHit && fu.io.in.ready
   })
-  private val outValidVec = fuList.map(_.io.out.valid)
-  private val outDataVec = fuList.map(_.io.out.bits)
-  private val outData = Mux1H(outValidVec, outDataVec)
-  writebackPort.valid := Cat(outValidVec).orR
-  writebackPort.bits.uop := outData.uop
-  writebackPort.bits.data := outData.data
+
+  issuePort.issue.ready := fuReadies.reduce(_|_)
+
+  writebackPort.valid := outputArbiter.io.out.valid
+  writebackPort.bits.uop := outputArbiter.io.out.bits.uop
+  writebackPort.bits.data := outputArbiter.io.out.bits.data
+  outputArbiter.io.out.ready := true.B
 
   io.fenceio.sfence := fence.sfence
   io.fenceio.fencei := fence.fencei

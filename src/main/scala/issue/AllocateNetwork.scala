@@ -24,6 +24,7 @@ import chisel3._
 import chisel3.util._
 import common.MicroOp
 import xs.utils.Assertion.xs_assert
+import xs.utils.PickOneLow
 
 class Switch2[T <: Data](gen:T) extends Module{
   val io = IO(new Bundle{
@@ -193,8 +194,7 @@ class AllocateNetwork(bankNum:Int, entryNumPerBank:Int, name:Option[String] = No
   })
   override val desiredName:String = name.getOrElse("AllocateNetwork")
 
-  private val entriesEmptyBitVecList = io.entriesValidBitVecList.map(elm => (~elm).asUInt)
-  private val entryIdxList = entriesEmptyBitVecList.map(EntryIdxGenerator.apply)
+  private val entryIdxList = io.entriesValidBitVecList.map(PickOneLow.apply)
   private val bankIdxList = entryIdxList.map(_.valid).zipWithIndex.map({ case(bankValid, bankIdx) =>
     val res = Wire(Valid(UInt(bankIdxWidth.W)))
     res.bits := bankIdx.U(bankIdxWidth.W)

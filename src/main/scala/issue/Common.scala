@@ -63,22 +63,20 @@ case class DispatchParam
   name: String,
   width: Int
 )
-class RsIssueBundle(fuSelWidth:Int) extends XSBundle{
-  val valid = Output(Bool())
-  val uop = Output(new MicroOp)
-  val src = Output(Vec(3, UInt(XLEN.W)))
-  val fuSel = Output(UInt(fuSelWidth.W))
-  val fmaMidState = ValidIO(new FMAMidResult)
+class IssueBundle extends XSBundle {
+  val issue = DecoupledIO(new ExuInput)
+  val fmaMidStateIssue = ValidIO(new FMAMidResult)
   val fmaWaitForAdd = Output(Bool())
-}
-class RsFeedbackBundle(fuSelWidth:Int) extends XSBundle{
-  val release = Input(UInt(fuSelWidth.W))
-  val fmaMidState = Flipped(ValidIO(new FMAMidResult))
-  val ready = Input(Bool())
-}
+  val fmaMidStateFeedBack = Flipped(ValidIO(new FMAMidResult))
+  def setIssueDefault:Unit = {
+    issue.valid := false.B
+    issue.bits := 0.U.asTypeOf(issue.bits)
+    fmaMidStateIssue := 0.U.asTypeOf(fmaMidStateIssue)
+    fmaWaitForAdd := false.B
+  }
 
-class IssueBundle(fuSelWidth:Int) extends XSBundle {
-  val issue = Output(new RsIssueBundle(fuSelWidth))
-  val feedback = Input(new RsFeedbackBundle(fuSelWidth))
-  def fire:Bool = issue.valid & feedback.ready
+  def setFeedBackDefault: Unit = {
+    issue.ready := false.B
+    fmaMidStateFeedBack := 0.U.asTypeOf(fmaMidStateFeedBack)
+  }
 }

@@ -4,11 +4,10 @@ import freechips.rocketchip.diplomacy._
 import chisel3._
 import chisel3.internal.sourceinfo.SourceInfo
 import chisel3.util._
-import common.{ExuInput, ExuOutput, MicroOp}
 import exu.ExuConfig
 import issue.{IssueBundle, RsParam}
 
-object RegfileInwardImpl extends InwardNodeImp[RsParam,Seq[ExuConfig],Seq[ExuConfig],MixedVec[IssueBundle]]{
+object RegfileInwardImpl extends InwardNodeImp[RsParam,Seq[ExuConfig],Seq[ExuConfig],Vec[IssueBundle]]{
 
   override def edgeI(pd: RsParam, pu: Seq[ExuConfig], p: config.Parameters, sourceInfo: SourceInfo): Seq[ExuConfig] = {
     require(pd.isLegal)
@@ -21,7 +20,7 @@ object RegfileInwardImpl extends InwardNodeImp[RsParam,Seq[ExuConfig],Seq[ExuCon
     }
   }
 
-  override def bundleI(ei: Seq[ExuConfig]): MixedVec[IssueBundle] = MixedVec(ei.map(elm => new IssueBundle(elm.releaseWidth)))
+  override def bundleI(ei: Seq[ExuConfig]): Vec[IssueBundle] = Vec(ei.length, new IssueBundle)
 
   override def render(e: Seq[ExuConfig]): RenderedEdge = {
     val edgeName = if(e.head.isIntType)"Int" else if(e.head.isFpType) "Fp" else "Mem"
@@ -32,7 +31,7 @@ object RegfileOutwardImpl extends OutwardNodeImp[Option[RsParam],ExuConfig,ExuCo
 
   override def edgeO(pd: Option[RsParam], pu: ExuConfig, p: config.Parameters, sourceInfo: SourceInfo): ExuConfig = pu
 
-  override def bundleO(eo: ExuConfig): IssueBundle = new IssueBundle(eo.releaseWidth)
+  override def bundleO(eo: ExuConfig): IssueBundle = new IssueBundle
 }
 
 class RegfileIssueNode(implicit valName: ValName)

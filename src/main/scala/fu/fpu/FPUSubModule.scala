@@ -20,7 +20,7 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import common.XSModule
-import fu.{DecoupledFunctionUnit, FunctionUnit, HasDecoupledPipelineReg, HasPipelineReg}
+import fu.{FunctionUnit, HasPipelineReg}
 
 trait HasUIntToSIntHelper {
   implicit class UIntToSIntHelper(x: UInt){
@@ -45,26 +45,7 @@ abstract class FPUDataModule(implicit p: Parameters) extends XSModule {
   val fflags = io.out.fflags
 }
 
-abstract class FPUSubModule(implicit p: Parameters) extends DecoupledFunctionUnit
-  with HasUIntToSIntHelper
-{
-  val rm = IO(Input(UInt(3.W)))
-  val fflags = IO(Output(UInt(5.W)))
-  val dataModule: FPUDataModule
-  def connectDataModule = {
-    dataModule.io.in.src <> io.in.bits.src
-    dataModule.io.in.fpCtrl <> io.in.bits.uop.ctrl.fpu
-    dataModule.io.in.rm <> rm
-    io.out.bits.data := dataModule.io.out.data
-    fflags := dataModule.io.out.fflags
-  }
-  def invert_sign(x: UInt, len: Int) = {
-    Cat(
-      !x(len-1), x(len-2, 0)
-    )
-  }
-}
-abstract class FPUSubModuleAllPipeline(implicit p: Parameters) extends FunctionUnit with HasPipelineReg
+abstract class FPUSubModule(implicit p: Parameters) extends FunctionUnit
   with HasUIntToSIntHelper
 {
   val rm = IO(Input(UInt(3.W)))
@@ -86,4 +67,4 @@ abstract class FPUSubModuleAllPipeline(implicit p: Parameters) extends FunctionU
 
 abstract class FPUPipelineModule(implicit p: Parameters)
   extends FPUSubModule
-  with HasDecoupledPipelineReg
+  with HasPipelineReg
