@@ -28,6 +28,10 @@ object ExuType{
   def intTypes: Seq[Int] = Seq(jmp, alu, mul, div)
   def memTypes: Seq[Int] = Seq(load, sta, std)
   def fpTypes: Seq[Int] = Seq(fmisc, fmac)
+  def primaryGprTypes: Seq[Int] = Seq(jmp, alu, mul)
+  def secondaryGprTypes: Seq[Int] = Seq(div, load, sta, std)
+  def gprTypes: Seq[Int] = intTypes ++ memTypes
+  def fprTypes: Seq[Int] = Seq(fmisc, fmac, std)
   def typeToString(in:Int):String = mapping(in)
 }
 
@@ -54,6 +58,11 @@ case class ExuConfig
   val isIntType = ExuType.intTypes.contains(exuType)
   val isMemType = ExuType.memTypes.contains(exuType)
   val isFpType = ExuType.fpTypes.contains(exuType)
+  val isPrimaryGprTypes = ExuType.primaryGprTypes.contains(exuType)
+  val isSecondaryGprTypes = ExuType.secondaryGprTypes.contains(exuType)
+  val isGprType = ExuType.gprTypes.contains(exuType)
+  val isFprType = ExuType.fprTypes.contains(exuType)
+
 
   override def toString = s"${name} #${id} belongs to ${blockName}: srcNum: ${srcNum} Type: ${ExuType.typeToString(exuType)} " +
     s"\n\tFunction Units: " + fuConfigs.toString()

@@ -17,14 +17,16 @@ class DecoupledPipeline(implementQueue:Boolean) extends Module{
     val deqPtr = RegInit(0.U.asTypeOf(new TwoEntryQueuePtr))
     val full = enqPtr.value === deqPtr.value && enqPtr.flag =/= deqPtr.flag
     val empty = enqPtr.value === deqPtr.value && enqPtr.flag === deqPtr.flag
+    val enqFire = io.enq.fire
+    val deqFire = io.deq.fire
     io.enq.ready := !full
     io.deq.valid := !empty
     io.deq.bits := mem(deqPtr.value)
-    when(io.enq.fire){
+    when(enqFire){
       mem(enqPtr.value) := io.enq.bits
       enqPtr := enqPtr + 1.U
     }
-    when(io.deq.fire || (io.deq.valid && io.deq.bits.robIdx.needFlush(io.redirect))) {
+    when(deqFire || (io.deq.valid && io.deq.bits.robIdx.needFlush(io.redirect))) {
       when(full && mem(deqPtr.value + 1.U).robIdx.needFlush(io.redirect)){
         deqPtr := deqPtr + 2.U
       }.otherwise{

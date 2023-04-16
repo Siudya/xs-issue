@@ -292,6 +292,8 @@ class MicroOp extends CfCtrl {
   val psrc = Vec(3, UInt(MaxRegfileIdxWidth.W))
   val pdest = UInt(MaxRegfileIdxWidth.W)
   val old_pdest = UInt(MaxRegfileIdxWidth.W)
+  val rsBankIdxOH = UInt(4.W)
+  val rsEntryIdxOH = UInt(maxEntryInOneRsBank.W)
   val robIdx = new RobPtr
   val lqIdx = new LqPtr
   val sqIdx = new SqPtr
@@ -325,9 +327,10 @@ trait XSParam{
   val floatExuNum = 6
   val VAddrBits = 39
   val AsidLength = 16
-  val maxFuNumInExu = 8
   val FtqSize = 64
   val divNumInOneExu = 3
+  val maxEntryInOneRsBank = 16
+  val duplicateGpr = true
 }
 class XSBundle extends Bundle with XSParam
 class XSModule extends Module with XSParam
@@ -396,4 +399,16 @@ object ExceptionNO {
 
   def selectByExu(vec: Vec[Bool], exuConfigs: Seq[ExuConfig]): Vec[Bool] =
     partialSelect(vec, exuConfigs.map(_.exceptionOut).reduce(_ ++ _).distinct.sorted)
+}
+
+case class Imm_LUI_LOAD() {
+  def immFromLuiLoad(lui_imm: UInt, load_imm: UInt): UInt = {
+    val loadImm = load_imm(Imm_I().len - 1, 0)
+    Cat(lui_imm(Imm_U().len - loadImm.getWidth - 1, 0), loadImm)
+  }
+  def getLuiImm(uop: MicroOp): UInt = {
+    val loadImmLen = Imm_I().len
+    val imm_u = Cat(uop.psrc(1), uop.psrc(0), uop.ctrl.imm(ImmUnion.maxLen - 1, loadImmLen))
+    Imm_U().do_toImm32(imm_u)
+  }
 }
