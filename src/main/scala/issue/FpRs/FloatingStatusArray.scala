@@ -18,22 +18,33 @@
   * E-mail: liangsen20z@ict.ac.cn
   * Date: 2023-03-31
   ****************************************************************************************/
-package issue.IntRs
+package issue.FpRs
 import chisel3._
 import chisel3.util._
-import common.{Redirect, SrcState, SrcType, XSModule}
+import common.{FuType, Redirect, SrcState, SrcType, XSModule}
 import issue._
 import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
 
-class IntegerIssueInfoGenerator extends Module{
+object EntryState{
+  def s_idle = 0.U
+  def s_wait_for_mid = 1.U
+  def s_mid_received = 2.U
+  def s_issued = 3.U
+}
+
+class FloatingIssueInfoGenerator extends Module{
   val io = IO(new Bundle{
-    val in = Input(Valid(new IntegerStatusArrayEntry))
-    val out = Output(Valid(new IntegerSelectInfo))
+    val in = Input(Valid(new FloatingStatusArrayEntry))
+    val out = Output(Valid(new FloatingSelectInfo))
   })
   private val iv = io.in.valid
   private val ib = io.in.bits
-  private val readyToIssue = ib.srcState(0) === SrcState.rdy & ib.srcState(1) === SrcState.rdy & !ib.issued
+  private val readyToIssue = Wire(Bool())
+  private val fmaIssueCond0 = ib.srcState(0) === SrcState.rdy && ib.srcState(1) === SrcState.rdy && ib.state === EntryState.s_idle
+  private val fmaIssueCond1 = ib.srcState(2) === SrcState.rdy && ib.state === EntryState.s_mid_received
+  private val fmiscIssueCond = ib.srcState(0) === SrcState.rdy && ib.srcState(1) === SrcState.rdy
+  readyToIssue := Mux(ib.fuType === FuType.fmac, fmaIssueCond0 | fmaIssueCond1, fmiscIssueCond)
   io.out.valid := readyToIssue & iv
   io.out.bits.fuType := ib.fuType
   io.out.bits.robPtr := ib.robIdx
@@ -43,16 +54,16 @@ class IntegerIssueInfoGenerator extends Module{
   private val lpvShiftRight = ib.lpv.map(_.map(elm=>LogicShiftRight(elm, 1)))
   io.out.bits.lpv.zip(lpvShiftRight.transpose).foreach({case(o, i) => o := i.reduce(_|_)})
 }
-class IntegerStatusArrayEntry extends BasicStatusArrayEntry(2, true){
-  val issued = Bool()
+class FloatingStatusArrayEntry extends BasicStatusArrayEntry(3, false){
+  val state = UInt(2.W)
 }
 
-class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:Int) extends XSModule{
+class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:Int) extends XSModule{
   val io = IO(new Bundle{
-    val entry = Input(Valid(new IntegerStatusArrayEntry))
-    val entryNext = Output(Valid(new IntegerStatusArrayEntry))
+    val entry = Input(Valid(new FloatingStatusArrayEntry))
+    val entryNext = Output(Valid(new FloatingStatusArrayEntry))
     val updateEnable = Output(Bool())
-    val enq = Input(Valid(new IntegerStatusArrayEntry))
+    val enq = Input(Valid(new FloatingStatusArrayEntry))
     val issue = Input(Vec(issueWidth, Bool()))
     val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
@@ -60,10 +71,9 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:I
     val redirect = Input(Valid(new Redirect))
   })
 
-  private val entryId = id.U
   io.entryNext := io.entry
   private val miscNext = WireInit(io.entry)
-  private val enqNext = Wire(Valid(new IntegerStatusArrayEntry))
+  private val enqNext = Wire(Valid(new FloatingStatusArrayEntry))
   private val enqUpdateEn = WireInit(false.B)
 
   //Start of wake up
@@ -83,15 +93,23 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:I
   private val srcShouldBeCancelled = io.entry.bits.lpv.map(l => io.earlyWakeUpCancel.zip(l).map({ case(c, li) => li(0) & c}).reduce(_|_))
   private val shouldBeIssued = Cat(io.issue).orR
   private val shouldBeCancelled = srcShouldBeCancelled.reduce(_|_)
-  miscNext.bits.issued := Mux(shouldBeCancelled, false.B, Mux(shouldBeIssued, true.B, io.entry.bits.issued))
+  private val waitAddIssue = shouldBeIssued && io.entry.bits.srcState(2) =/= SrcState.rdy
+  private val finalIssue = shouldBeIssued && io.entry.bits.state(2) === SrcState.rdy
+  when(shouldBeCancelled){
+    miscNext.bits.state := EntryState.s_idle
+  }.elsewhen(waitAddIssue){
+    EntryState.s_wait_for_mid
+  }.elsewhen(finalIssue){
+    EntryState.s_issued
+  }
   srcShouldBeCancelled.zip(miscNext.bits.srcState).foreach{case(en, state) => when(en){state := SrcState.busy}}
-  private val miscUpdateEnCancelOrIssue = Cat(shouldBeCancelled, shouldBeIssued).orR
+  private val miscUpdateEnCancelOrIssue = Cat(shouldBeCancelled, waitAddIssue, finalIssue).orR
   //End of issue and cancel
 
   //Start of dequeue and redirect
   private val shouldBeFlushed = io.entry.valid & io.entry.bits.robIdx.needFlush(io.redirect)
   private val mayNeedReplay = io.entry.bits.lpv.map(_.map(_.orR).reduce(_|_)).reduce(_|_)
-  private val miscUpdateEnDequeueOrRedirect = (io.entry.bits.issued && !mayNeedReplay) || shouldBeFlushed
+  private val miscUpdateEnDequeueOrRedirect = (io.entry.bits.state === EntryState.s_issued && !mayNeedReplay) || shouldBeFlushed
   when(miscUpdateEnDequeueOrRedirect) {
     miscNext.valid := false.B
   }
@@ -127,7 +145,7 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:I
   io.entryNext := Mux(enqUpdateEn, enqNext, miscNext)
 }
 
-class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends XSModule{
+class FloatingStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends XSModule{
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
 
@@ -136,7 +154,7 @@ class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnit
 
     val enq = Input(Valid(new Bundle{
       val addrOH = UInt(entryNum.W)
-      val data = new IntegerStatusArrayEntry
+      val data = new FloatingStatusArrayEntry
     }))
 
     val issue = Input(Vec(issueWidth, Valid(UInt(entryNum.W))))
@@ -145,7 +163,7 @@ class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnit
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
   })
 
-  private val statusArray = Reg(Vec(entryNum, new IntegerStatusArrayEntry))
+  private val statusArray = Reg(Vec(entryNum, new FloatingStatusArrayEntry))
   private val statusArrayValid = RegInit(VecInit(Seq.fill(entryNum)(false.B)))
   private val statusArrayValidAux = RegInit(VecInit(Seq.fill(entryNum)(false.B)))
 
@@ -153,7 +171,7 @@ class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnit
   for(((selInfo, saEntry), saValid) <- io.selectInfo
     .zip(statusArray)
     .zip(statusArrayValid)){
-    val entryToSelectInfoCvt = Module(new IntegerIssueInfoGenerator)
+    val entryToSelectInfoCvt = Module(new FloatingIssueInfoGenerator)
     val shouldBeCancelled = saEntry.lpv.flatMap(lpv => io.earlyWakeUpCancel.zip(lpv).map({case(v, l) => v&l(0)})).reduce(_|_)
     entryToSelectInfoCvt.io.in.valid := saValid && !shouldBeCancelled
     entryToSelectInfoCvt.io.in.bits := saEntry
@@ -169,8 +187,8 @@ class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnit
     .zip(statusArrayValidAux)
     .zip(statusArray)
     .zipWithIndex
-  ){
-    val updateNetwork = Module(new IntegerStatusArrayEntryUpdateNetwork(issueWidth, wakeupWidth, idx))
+      ){
+    val updateNetwork = Module(new FloatingStatusArrayEntryUpdateNetwork(issueWidth, wakeupWidth, idx))
     updateNetwork.io.entry.valid := v
     updateNetwork.io.entry.bits := d
     updateNetwork.io.enq.valid := io.enq.valid & io.enq.bits.addrOH(idx)

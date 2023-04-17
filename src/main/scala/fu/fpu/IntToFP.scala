@@ -83,4 +83,6 @@ class IntToFP(implicit p: Parameters) extends FPUSubModule with HasPipelineReg {
   override val dataModule = Module(new IntToFPDataModule(latency))
   connectDataModule
   dataModule.regEnables := VecInit((1 to latency) map (i => regEnable(i)))
+  io.out.valid := validVec.last
+  io.out.bits.uop := uopVec.last
 }

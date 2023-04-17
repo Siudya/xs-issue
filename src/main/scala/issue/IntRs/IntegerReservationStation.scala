@@ -77,7 +77,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     val snIssueNum = elm.length
     val snName = elm.head._2.name
     val snCfg = elm.head._2
-    val mod = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, snIssueNum, snCfg, Some(s"Integer${snName}SelectNetwork")))
+    val mod = Module(new SelectNetwork(new IntegerSelectInfo, param.bankNum, entriesNumPerBank, snIssueNum, snCfg, Some(s"Integer${snName}SelectNetwork")))
     mod.io.redirect := io.redirect
     if(elm.head._2.latency != Int.MaxValue){
       val wkq = Seq.fill(snIssueNum)(Module(new WakeupQueue(elm.head._2.latency)))
@@ -141,7 +141,9 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
         issueDriver.io.enq.valid := issueBundle.valid
         issueDriver.io.enq.bits := issueBundle.bits
 
-        iss_elm._1.setIssueDefault
+        iss_elm._1.fmaMidStateIssue.valid := false.B
+        iss_elm._1.fmaMidStateIssue.bits := DontCare
+        iss_elm._1.fmaWaitForAdd := false.B
         iss_elm._1.issue.valid := issueDriver.io.deq.valid
         iss_elm._1.issue.bits.uop := issueDriver.io.deq.bits
         issueDriver.io.deq.ready := iss_elm._1.issue.ready

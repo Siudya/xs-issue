@@ -42,7 +42,7 @@ case class ExuConfig
   blockName: String, // NOTE: for perf counter
   fuConfigs: Seq[FuConfig],
   exuType:Int,
-  releaseWidth:Int = 0
+  speculativeWakeup:Boolean = false
 ){
   val srcNum:Int = fuConfigs.map(_.srcCnt).max
   val hasFastWakeup: Boolean = fuConfigs.map(_.latency).max != Int.MaxValue
@@ -58,11 +58,6 @@ case class ExuConfig
   val isIntType = ExuType.intTypes.contains(exuType)
   val isMemType = ExuType.memTypes.contains(exuType)
   val isFpType = ExuType.fpTypes.contains(exuType)
-  val isPrimaryGprTypes = ExuType.primaryGprTypes.contains(exuType)
-  val isSecondaryGprTypes = ExuType.secondaryGprTypes.contains(exuType)
-  val isGprType = ExuType.gprTypes.contains(exuType)
-  val isFprType = ExuType.fprTypes.contains(exuType)
-
 
   override def toString = s"${name} #${id} belongs to ${blockName}: srcNum: ${srcNum} Type: ${ExuType.typeToString(exuType)} " +
     s"\n\tFunction Units: " + fuConfigs.toString()

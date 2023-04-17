@@ -3,7 +3,7 @@ import issue._
 import chisel3._
 import chisel3.util._
 import common.{ MicroOp, Redirect}
-import issue.{EarlyWakeUpInfo, SelectInfo, WakeUpInfo}
+import issue.{EarlyWakeUpInfo, WakeUpInfo}
 
 class IntegerPayloadEntryEncoder extends Module{
   val io = IO(new Bundle{
@@ -36,7 +36,7 @@ class IntegerReservationStationBank(entryNum:Int, issueWidth:Int, wakeupWidth:In
   val io = IO(new Bundle {
     val redirect = Input(Valid(new Redirect))
 
-    val selectInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
+    val selectInfo = Output(Vec(entryNum, Valid(new IntegerSelectInfo)))
     val allocateInfo = Output(UInt(entryNum.W))
 
     val enq = Input(Valid(new Bundle {

@@ -49,14 +49,11 @@ class IntegerRegFileImpl(outer: IntegerRegFile)(implicit p: Parameters) extends 
     val bo = issO._1
     val eo = issO._2
     prefix(eo.name + "_" + eo.id) {
-      val outBundle = Wire(new IssueBundle)
+      val outBundle = Wire(Valid(new ExuInput))
       val lpvCancel = bi.issue.bits.uop.lpv.zip(io.earlyWakeUpCancel).map({ case (i, c) => i(0).asBool & c }).reduce(_ || _)
-      outBundle := DontCare
-      outBundle.issue.ready := DontCare
-      outBundle.issue.valid := bi.issue.valid && !lpvCancel
-      outBundle.issue.bits := bi.issue.bits
-      outBundle.issue.valid := bi.issue.valid && !bi.issue.bits.uop.robIdx.needFlush(io.redirect)
-      outBundle.issue.bits.src.take(eo.srcNum)
+      outBundle.valid := bi.issue.valid && !lpvCancel && !bi.issue.bits.uop.robIdx.needFlush(io.redirect)
+      outBundle.bits := bi.issue.bits
+      outBundle.bits.src.take(eo.srcNum)
         .zip(bi.issue.bits.uop.psrc.take(eo.srcNum))
         .zip(bi.issue.bits.uop.ctrl.srcType.take(eo.srcNum))
         .foreach({ case ((data, addr), st) =>
@@ -69,22 +66,22 @@ class IntegerRegFileImpl(outer: IntegerRegFile)(implicit p: Parameters) extends 
           xs_assert(PopCount(bypassOH) === 1.U)
         })
 
-      if (eo.srcNum < outBundle.issue.bits.src.length) outBundle.issue.bits.src.slice(eo.srcNum, outBundle.issue.bits.src.length).foreach(_ := DontCare)
+      if (eo.srcNum < outBundle.bits.src.length) outBundle.bits.src.slice(eo.srcNum, outBundle.bits.src.length).foreach(_ := DontCare)
       val imJmp = eo.exuType == ExuType.jmp
       if (imJmp) {
         io.jmpTargetRead := (bi.issue.bits.uop.cf.ftqPtr + 1.U).value
         io.jmpPcRead := bi.issue.bits.uop.cf.ftqPtr.value
       }
       val realIssueOut = Wire(new ExuInput)
-      realIssueOut := ImmExtractor(eo, outBundle.issue.bits, if (imJmp) Some(io.jmpPcData) else None, if (imJmp) Some(io.jmpTargetData) else None)
+      realIssueOut := ImmExtractor(eo, outBundle.bits, if (imJmp) Some(io.jmpPcData) else None, if (imJmp) Some(io.jmpTargetData) else None)
 
       val outputValidDriverRegs = RegInit(false.B)
       val outputExuInputDriverRegs = Reg(new ExuInput)
       val pipelinePermitted = (!outputValidDriverRegs) || bo.issue.fire
       when(pipelinePermitted) {
-        outputValidDriverRegs := outBundle.issue.valid
+        outputValidDriverRegs := outBundle.valid
       }
-      when(pipelinePermitted && outBundle.issue.valid) {
+      when(pipelinePermitted && outBundle.valid) {
         outputExuInputDriverRegs := realIssueOut
       }
 

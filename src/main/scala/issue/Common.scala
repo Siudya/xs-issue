@@ -16,7 +16,6 @@ abstract class BasicStatusArrayEntry(val srcNum:Int, isIntSrc:Boolean) extends X
   val robIdx = new RobPtr
 }
 class MemoryStatusArrayEntry extends BasicStatusArrayEntry(2, true)
-class FloatStatusArrayEntry extends BasicStatusArrayEntry(3, false)
 
 class SelectInfo extends XSBundle{
   val fuType = FuType()
@@ -26,6 +25,10 @@ class SelectInfo extends XSBundle{
   val fpWen = Bool()
   val robPtr = new RobPtr
 }
+
+class IntegerSelectInfo extends SelectInfo
+
+class FloatingSelectInfo extends SelectInfo
 
 class BasicWakeupInfo extends XSBundle{
   val pdest = UInt(MaxRegfileIdxWidth.W)
@@ -49,6 +52,7 @@ case class RsParam
   name:String,
   rsType:Int,
   entriesNum:Int = 48,
+  speckWakeupPort:Int,
   //Unchangeable parameters
   bankNum:Int = 4
 ){
@@ -68,15 +72,4 @@ class IssueBundle extends XSBundle {
   val fmaMidStateIssue = ValidIO(new FMAMidResult)
   val fmaWaitForAdd = Output(Bool())
   val fmaMidStateFeedBack = Flipped(ValidIO(new FMAMidResult))
-  def setIssueDefault:Unit = {
-    issue.valid := false.B
-    issue.bits := 0.U.asTypeOf(issue.bits)
-    fmaMidStateIssue := 0.U.asTypeOf(fmaMidStateIssue)
-    fmaWaitForAdd := false.B
-  }
-
-  def setFeedBackDefault: Unit = {
-    issue.ready := false.B
-    fmaMidStateFeedBack := 0.U.asTypeOf(fmaMidStateFeedBack)
-  }
 }

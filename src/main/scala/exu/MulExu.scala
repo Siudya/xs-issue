@@ -3,7 +3,7 @@ import chisel3._
 import chisel3.util._
 import chipsalliance.rocketchip.config.Parameters
 import common.{ExuOutput, FuType, XSParam}
-import fu.FuConfigs
+import fu.{FuConfigs, FuOutput}
 import fu.bku.Bku
 import fu.mdu.{ArrayMultiplier, MDUOpType}
 import xs.utils.Assertion.xs_assert
@@ -81,8 +81,14 @@ class MulExuImpl(outer:MulExu)(implicit p:Parameters) extends BasicExuImpl(outer
   mul.ctrl.isHi := isH
   mul.ctrl.sign := DontCare
 
-  private val outSel = Seq(mul.io.out.valid, bku.io.out.valid)
-  private val outData = Seq(mul.io.out, bku.io.out)
+  private val mulOut = WireInit(mul.io.out)
+  private val bkuOut = WireInit(bku.io.out)
+  mulOut.valid := RegNext(mul.io.out.valid, false.B)
+  mulOut.bits.uop := RegEnable(mul.io.out.bits.uop, mul.io.out.valid)
+  bkuOut.valid := RegNext(bku.io.out.valid, false.B)
+  bkuOut.bits.uop := RegEnable(bku.io.out.bits.uop, bku.io.out.valid)
+  private val outSel = Seq(mulOut.valid, bkuOut.valid)
+  private val outData = Seq(mulOut, bkuOut)
   private val finalData = ParallelMux(outSel, outData)
   writebackPort := DontCare
   writebackPort.valid := finalData.valid

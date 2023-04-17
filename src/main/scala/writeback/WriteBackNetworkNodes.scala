@@ -33,6 +33,8 @@ case class WriteBackSinkParam
   def isMemRs = sinkType == WriteBackSinkType.memRs
   def isFpRs = sinkType == WriteBackSinkType.fpRs
   def isLegal = isIntRf || isFpRf ||isRob ||isIntRs ||isMemRs ||isFpRs
+  def needWakeup = isIntRs || isMemRs || isFpRs
+  def needWriteback = isIntRf || isFpRf || isRob
 }
 
 object WriteBackNetworkNodeInwardImpl extends InwardNodeImp[ExuConfig, Option[ExuConfig], ExuConfig, Valid[ExuOutput]]{
@@ -40,10 +42,11 @@ object WriteBackNetworkNodeInwardImpl extends InwardNodeImp[ExuConfig, Option[Ex
   override def bundleI(ei: ExuConfig): ValidIO[ExuOutput] = Valid(new ExuOutput)
   override def render(e: ExuConfig): RenderedEdge = RenderedEdge("#0000ff",e.name + " writeback")
 }
-object WriteBackNetworkNodeOutwardImpl extends OutwardNodeImp[Seq[ExuConfig], WriteBackSinkParam, Seq[ExuConfig], Vec[Valid[ExuOutput]]]{
-  override def edgeO(pd: Seq[ExuConfig], pu: WriteBackSinkParam, p: config.Parameters, sourceInfo: SourceInfo): Seq[ExuConfig] = {
+object WriteBackNetworkNodeOutwardImpl extends OutwardNodeImp[Seq[ExuConfig], WriteBackSinkParam, (WriteBackSinkParam, Seq[ExuConfig]), Vec[Valid[ExuOutput]]]{
+  override def edgeO(pd: Seq[ExuConfig], pu: WriteBackSinkParam, p: config.Parameters, sourceInfo: SourceInfo): (WriteBackSinkParam, Seq[ExuConfig]) = {
     require(pu.isLegal)
-    if (pu.isIntRf) {
+
+    val resPd = if (pu.isIntRf) {
       pd.filter(_.writeIntRf)
     } else if (pu.isFpRf) {
       pd.filter(_.writeFpRf)
@@ -56,8 +59,9 @@ object WriteBackNetworkNodeOutwardImpl extends OutwardNodeImp[Seq[ExuConfig], Wr
     } else {
       pd
     }
+    (pu,pd)
   }
-  override def bundleO(eo: Seq[ExuConfig]): Vec[ValidIO[ExuOutput]] = Vec(eo.length, Valid(new ExuOutput))
+  override def bundleO(eo: (WriteBackSinkParam, Seq[ExuConfig])): Vec[ValidIO[ExuOutput]] = Vec(eo._2.length, Valid(new ExuOutput))
 }
 object WriteBackSinkNodeImpl extends SimpleNodeImp[Seq[ExuConfig], WriteBackSinkParam, Seq[ExuConfig], Vec[Valid[ExuOutput]]]{
   override def edge(pd: Seq[ExuConfig], pu: WriteBackSinkParam, p: config.Parameters, sourceInfo: SourceInfo): Seq[ExuConfig] = pd
