@@ -26,6 +26,8 @@ import issue._
 import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
 
+class IntegerSelectInfo extends SelectInfo
+
 class IntegerIssueInfoGenerator extends Module{
   val io = IO(new Bundle{
     val in = Input(Valid(new IntegerStatusArrayEntry))
@@ -110,7 +112,7 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:I
       val wakeupLpvValid= lpvUpdateHitsVec.reduce(_|_)
       val wakeupLpvSelected = Mux1H(lpvUpdateHitsVec, lpvUpdateDataVec)
       nl := Mux(wakeupLpvValid, wakeupLpvSelected, LogicShiftRight(ol,1))
-      m := wakeupLpvValid | nl.orR
+      m := wakeupLpvValid | ol.orR
     }
   }
   private val miscUpdateEnLpvUpdate = lpvModified.map(_.reduce(_|_)).reduce(_|_)

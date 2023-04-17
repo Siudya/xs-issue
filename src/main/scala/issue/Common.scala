@@ -17,19 +17,6 @@ abstract class BasicStatusArrayEntry(val srcNum:Int, isIntSrc:Boolean) extends X
 }
 class MemoryStatusArrayEntry extends BasicStatusArrayEntry(2, true)
 
-class SelectInfo extends XSBundle{
-  val fuType = FuType()
-  val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
-  val pdest = UInt(MaxRegfileIdxWidth.W)
-  val rfWen = Bool()
-  val fpWen = Bool()
-  val robPtr = new RobPtr
-}
-
-class IntegerSelectInfo extends SelectInfo
-
-class FloatingSelectInfo extends SelectInfo
-
 class BasicWakeupInfo extends XSBundle{
   val pdest = UInt(MaxRegfileIdxWidth.W)
   val robPtr = new RobPtr

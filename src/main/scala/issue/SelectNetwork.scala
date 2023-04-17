@@ -21,10 +21,19 @@
 package issue
 import chisel3._
 import chisel3.util._
-import common.{Redirect, XSBundle, XSModule}
+import common.{FuType, Redirect, RobPtr, XSBundle, XSModule}
 import exu.{ExuConfig, ExuType}
 import xs.utils.Assertion.xs_assert
 import xs.utils.ParallelOperation
+
+class SelectInfo extends XSBundle{
+  val fuType = FuType()
+  val lpv = Vec(loadUnitNum, UInt(LpvLength.W))
+  val pdest = UInt(MaxRegfileIdxWidth.W)
+  val rfWen = Bool()
+  val fpWen = Bool()
+  val robPtr = new RobPtr
+}
 
 class SelectResp[T <: SelectInfo](gen:T, bankIdxWidth:Int, entryIdxWidth:Int) extends XSBundle {
   val info = gen.cloneType

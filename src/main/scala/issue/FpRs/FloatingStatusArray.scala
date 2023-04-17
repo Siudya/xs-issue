@@ -21,10 +21,12 @@
 package issue.FpRs
 import chisel3._
 import chisel3.util._
-import common.{FuType, Redirect, SrcState, SrcType, XSModule}
+import common.{FuOpType, FuType, Redirect, SrcState, SrcType, XSModule}
 import issue._
 import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
+
+class FloatingSelectInfo extends SelectInfo
 
 object EntryState{
   def s_idle = 0.U
@@ -44,7 +46,7 @@ class FloatingIssueInfoGenerator extends Module{
   private val fmaIssueCond0 = ib.srcState(0) === SrcState.rdy && ib.srcState(1) === SrcState.rdy && ib.state === EntryState.s_idle
   private val fmaIssueCond1 = ib.srcState(2) === SrcState.rdy && ib.state === EntryState.s_mid_received
   private val fmiscIssueCond = ib.srcState(0) === SrcState.rdy && ib.srcState(1) === SrcState.rdy
-  readyToIssue := Mux(ib.fuType === FuType.fmac, fmaIssueCond0 | fmaIssueCond1, fmiscIssueCond)
+  readyToIssue := Mux(ib.isFma, fmaIssueCond0 | fmaIssueCond1, fmiscIssueCond)
   io.out.valid := readyToIssue & iv
   io.out.bits.fuType := ib.fuType
   io.out.bits.robPtr := ib.robIdx
@@ -56,6 +58,7 @@ class FloatingIssueInfoGenerator extends Module{
 }
 class FloatingStatusArrayEntry extends BasicStatusArrayEntry(3, false){
   val state = UInt(2.W)
+  val isFma = Bool()
 }
 
 class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:Int) extends XSModule{
@@ -68,6 +71,7 @@ class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:
     val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
+    val midResultReceived = Input(Bool())
     val redirect = Input(Valid(new Redirect))
   })
 
@@ -75,11 +79,12 @@ class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:
   private val miscNext = WireInit(io.entry)
   private val enqNext = Wire(Valid(new FloatingStatusArrayEntry))
   private val enqUpdateEn = WireInit(false.B)
+  private val isFma = io.entry.bits.isFma
 
   //Start of wake up
   private val pregMatch = io.entry.bits.psrc
     .zip(io.entry.bits.srcType)
-    .map(p => (io.wakeup ++ io.loadEarlyWakeup).map(elm => (elm.bits.pdest === p._1) && elm.valid && p._2 === SrcType.reg))
+    .map(p => (io.wakeup ++ io.loadEarlyWakeup).map(elm => (elm.bits.pdest === p._1) && elm.valid && p._2 === SrcType.fp))
   for((n, v) <- miscNext.bits.srcState zip pregMatch){
     val shouldUpdateSrcState = Cat(v).orR
     when(shouldUpdateSrcState){
@@ -93,22 +98,50 @@ class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:
   private val srcShouldBeCancelled = io.entry.bits.lpv.map(l => io.earlyWakeUpCancel.zip(l).map({ case(c, li) => li(0) & c}).reduce(_|_))
   private val shouldBeIssued = Cat(io.issue).orR
   private val shouldBeCancelled = srcShouldBeCancelled.reduce(_|_)
-  private val waitAddIssue = shouldBeIssued && io.entry.bits.srcState(2) =/= SrcState.rdy
-  private val finalIssue = shouldBeIssued && io.entry.bits.state(2) === SrcState.rdy
-  when(shouldBeCancelled){
-    miscNext.bits.state := EntryState.s_idle
-  }.elsewhen(waitAddIssue){
-    EntryState.s_wait_for_mid
-  }.elsewhen(finalIssue){
-    EntryState.s_issued
+  private val srcAllReady = io.entry.bits.srcState.map(elm => elm === SrcState.rdy).reduce(_|_)
+  private val waitAddIssue = shouldBeIssued && io.entry.bits.srcState(2) =/= SrcState.rdy && isFma
+  private val actualIssue = shouldBeIssued && (srcAllReady || !isFma)
+  private val mayNeedReplay = io.entry.bits.lpv.map(_.map(_.orR).reduce(_|_)).reduce(_|_)
+  private val state = io.entry.bits.state
+  private val stateNext = miscNext.bits.state
+  private val miscUpdateEnCancelOrIssue = WireInit(false.B)
+  switch(state){
+    is(EntryState.s_idle){
+      when(waitAddIssue) {
+        stateNext := EntryState.s_wait_for_mid
+        miscUpdateEnCancelOrIssue := true.B
+      }.elsewhen(actualIssue) {
+        stateNext := EntryState.s_issued
+        miscUpdateEnCancelOrIssue := true.B
+      }
+    }
+    is(EntryState.s_wait_for_mid){
+      when(shouldBeCancelled){
+        stateNext := EntryState.s_idle
+        miscUpdateEnCancelOrIssue := true.B
+      }.elsewhen(io.midResultReceived){
+        stateNext := EntryState.s_mid_received
+        miscUpdateEnCancelOrIssue := true.B
+      }
+    }
+    is(EntryState.s_mid_received){
+      when(actualIssue){
+        stateNext := EntryState.s_issued
+        miscUpdateEnCancelOrIssue := true.B
+      }
+    }
+    is(EntryState.s_issued){
+      when(!mayNeedReplay){
+        stateNext := EntryState.s_idle
+        miscUpdateEnCancelOrIssue := true.B
+      }
+    }
   }
   srcShouldBeCancelled.zip(miscNext.bits.srcState).foreach{case(en, state) => when(en){state := SrcState.busy}}
-  private val miscUpdateEnCancelOrIssue = Cat(shouldBeCancelled, waitAddIssue, finalIssue).orR
   //End of issue and cancel
 
   //Start of dequeue and redirect
   private val shouldBeFlushed = io.entry.valid & io.entry.bits.robIdx.needFlush(io.redirect)
-  private val mayNeedReplay = io.entry.bits.lpv.map(_.map(_.orR).reduce(_|_)).reduce(_|_)
   private val miscUpdateEnDequeueOrRedirect = (io.entry.bits.state === EntryState.s_issued && !mayNeedReplay) || shouldBeFlushed
   when(miscUpdateEnDequeueOrRedirect) {
     miscNext.valid := false.B
@@ -120,15 +153,15 @@ class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:
   lpvModified.foreach(_.foreach(_ := false.B))
   for(((((newLpvs, oldLpvs),mod), st), psrc) <- miscNext.bits.lpv.zip(io.entry.bits.lpv).zip(lpvModified).zip(io.entry.bits.srcType).zip(io.entry.bits.psrc)){
     for(((((nl, ol), ewkp), m),idx) <- newLpvs.zip(oldLpvs).zip(io.loadEarlyWakeup).zip(mod).zipWithIndex){
-      val earlyWakeUpHit = ewkp.valid && ewkp.bits.pdest === psrc && st === SrcType.reg
-      val regularWakeupHits = io.wakeup.map(wkp => wkp.valid && wkp.bits.pdest === psrc && st === SrcType.reg)
+      val earlyWakeUpHit = ewkp.valid && ewkp.bits.pdest === psrc && st === SrcType.fp
+      val regularWakeupHits = io.wakeup.map(wkp => wkp.valid && wkp.bits.pdest === psrc && st === SrcType.fp)
       val regularWakeupLpv = io.wakeup.map(wkp => wkp.bits.lpv(idx))
       val lpvUpdateHitsVec = regularWakeupHits :+ earlyWakeUpHit
       val lpvUpdateDataVec = regularWakeupLpv :+ ewkp.bits.lpv
       val wakeupLpvValid= lpvUpdateHitsVec.reduce(_|_)
       val wakeupLpvSelected = Mux1H(lpvUpdateHitsVec, lpvUpdateDataVec)
       nl := Mux(wakeupLpvValid, wakeupLpvSelected, LogicShiftRight(ol,1))
-      m := wakeupLpvValid | nl.orR
+      m := wakeupLpvValid | ol.orR
     }
   }
   private val miscUpdateEnLpvUpdate = lpvModified.map(_.reduce(_|_)).reduce(_|_)
