@@ -3,25 +3,25 @@ import chisel3._
 import chisel3.util._
 import common.{MicroOp, XSModule}
 import xs.utils.Assertion.xs_assert
-class PayloadArrayReadIO(entryNum:Int) extends Bundle {
+class PayloadArrayReadIO[T <: Data](gen:T, entryNum:Int) extends Bundle {
   val addr = Input(UInt(entryNum.W))
-  val data = Output(new MicroOp)
+  val data = Output(gen)
 }
 
-class PayloadArrayWriteIO(entryNum:Int) extends Bundle {
+class PayloadArrayWriteIO[T <: Data](gen:T, entryNum:Int) extends Bundle {
   val en = Input(Bool())
   val addr   = Input(UInt(entryNum.W))
-  val data   = Input(new MicroOp)
+  val data   = Input(gen)
 }
 
-class PayloadArray(entryNum:Int, deqNum:Int, name:String) extends XSModule {
+class PayloadArray[T <: Data](gen:T, entryNum:Int, deqNum:Int, name:String) extends XSModule {
   val io = IO(new Bundle {
-    val read = Vec(deqNum, new PayloadArrayReadIO(entryNum))
-    val write = new PayloadArrayWriteIO(entryNum)
+    val read = Vec(deqNum, new PayloadArrayReadIO(gen, entryNum))
+    val write = new PayloadArrayWriteIO(gen, entryNum)
   })
   override val desiredName:String = name
 
-  private val payload = Reg(Vec(entryNum, new MicroOp))
+  private val payload = Reg(Vec(entryNum, gen))
 
   // read ports
   io.read.foreach(r => {r.data := Mux1H(r.addr.asBools, payload)})

@@ -1,4 +1,4 @@
-package issue.IntRs
+package issue.FpRs
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.experimental.prefix
@@ -7,21 +7,22 @@ import common.{MicroOp, Redirect, XSParam}
 import exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, ValName}
 import freechips.rocketchip.macros.ValNameImpl
+import fu.fpu.FMAMidResult
 import issue._
 import regfile.DecoupledPipeline
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 
-class IntegerReservationStation(bankNum:Int)(implicit p: Parameters) extends LazyModule with XSParam{
+class FloatingReservationStation(bankNum:Int)(implicit p: Parameters) extends LazyModule with XSParam{
   private val issueNum = 8
   private val wbNodeParam = WriteBackSinkParam(name = "Integer RS", sinkType = WriteBackSinkType.intRs)
   private val rsParam = RsParam(name = "Integer RS", RsType.int, 48, bankNum)
   val issueNode = new RsIssueNode(rsParam)
   val wakeupNode = new WriteBackSinkNode(wbNodeParam)
 
-  lazy val module = new IntegerReservationStationImpl(this, rsParam)
+  lazy val module = new FloatingReservationStationImpl(this, rsParam)
 }
 
-class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsParam) extends LazyModuleImp(outer) with XSParam {
+class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsParam) extends LazyModuleImp(outer) with XSParam {
   require(param.bankNum == 4)
   require(param.entriesNum % param.bankNum == 0)
   private val issue = outer.issueNode.out.head._1 zip outer.issueNode.out.head._2
@@ -66,7 +67,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     wkp
   }))
   private val rsBankSeq = Seq.tabulate(param.bankNum)( _ => {
-    val mod = Module(new IntegerReservationBank(entriesNumPerBank, issueTypeNum, internalWakeupNum + wakeup.length, loadUnitNum))
+    val mod = Module(new FloatingReservationBank(entriesNumPerBank, issueTypeNum, internalWakeupNum + wakeup.length, loadUnitNum))
     mod.io.redirect := io.redirect
     mod.io.wakeup := wakeupSignals ++ internalWakeup
     mod.io.loadEarlyWakeup := io.loadEarlyWakeup
@@ -78,7 +79,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     val snIssueNum = elm.length
     val snName = elm.head._2.name
     val snCfg = elm.head._2
-    val mod = Module(new SelectNetwork(new IntegerSelectInfo, param.bankNum, entriesNumPerBank, snIssueNum, snCfg, Some(s"Integer${snName}SelectNetwork")))
+    val mod = Module(new SelectNetwork(new FloatingSelectInfo, param.bankNum, entriesNumPerBank, snIssueNum, snCfg, Some(s"Integer${snName}SelectNetwork")))
     mod.io.redirect := io.redirect
     if(elm.head._2.latency != Int.MaxValue){
       val wkq = Seq.fill(snIssueNum)(Module(new WakeupQueue(elm.head._2.latency)))
@@ -122,24 +123,29 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
 
   for(((iss, sn), fuIdx) <- issuePortList.zip(selectNetworkSeq).zipWithIndex){
     val rbIssAddrPorts = rsBankSeq.map(_.io.issueAddr(fuIdx))
-    val rbIssDataPorts = rsBankSeq.map(_.io.issueData(fuIdx))
+    val rbIssUopPorts = rsBankSeq.map(_.io.issueUop(fuIdx))
+    val rbIssMidStatePorts = rsBankSeq.map(_.io.issueMidState(fuIdx))
     for((iss_elm, portIdx) <- iss.zipWithIndex) {
       prefix(s"${iss_elm._2.name}_${iss_elm._2.id}") {
         val issueBundle = Wire(Valid(new MicroOp))
+        val midStateBundle = Wire(Valid((new FMAMidResult)))
         val bn = param.bankNum / iss.length
         val rbAddrPortsForThisPort = rbIssAddrPorts.slice(portIdx * bn, portIdx * bn + bn)
-        val rbDataPortsForThisPort = rbIssDataPorts.slice(portIdx * bn, portIdx * bn + bn)
+        val rbUopPortsForThisPort = rbIssUopPorts.slice(portIdx * bn, portIdx * bn + bn)
+        val rbMidStatePortsForThisPort = rbIssMidStatePorts.slice(portIdx * bn, portIdx * bn + bn)
         val selectResps = sn.io.issueInfo(portIdx)
 
         issueBundle := DontCare
         issueBundle.valid := selectResps.valid
-        issueBundle.bits := Mux1H(rbDataPortsForThisPort.map(elm => (elm.valid, elm.bits)))
+        issueBundle.bits := Mux1H(rbUopPortsForThisPort.map(elm => (elm.valid, elm.bits)))
         issueBundle.bits.robIdx := selectResps.bits.info.robPtr
         issueBundle.bits.ctrl.rfWen := selectResps.bits.info.rfWen
         issueBundle.bits.ctrl.fpWen := selectResps.bits.info.fpWen
         issueBundle.bits.pdest := selectResps.bits.info.pdest
         issueBundle.bits.ctrl.fuType := selectResps.bits.info.fuType
         issueBundle.bits.lpv := selectResps.bits.info.lpv
+
+        midStateBundle := Mux1H(rbMidStatePortsForThisPort.map(elm => (elm.valid, elm.bits)))
 
         val issueValidDriverReg = RegInit(false.B)
         val issueBitsDriverReg = Reg(new MicroOp)

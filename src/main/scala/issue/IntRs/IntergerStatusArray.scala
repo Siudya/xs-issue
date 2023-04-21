@@ -20,11 +20,13 @@
   ****************************************************************************************/
 package issue.IntRs
 import chisel3._
+import chisel3.experimental.ChiselAnnotation
 import chisel3.util._
 import common.{Redirect, SrcState, SrcType, XSModule}
 import issue._
 import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
+import firrtl.passes.InlineAnnotation
 
 class IntegerSelectInfo extends SelectInfo
 
@@ -44,12 +46,16 @@ class IntegerIssueInfoGenerator extends Module{
   io.out.bits.rfWen := ib.rfWen
   private val lpvShiftRight = ib.lpv.map(_.map(elm=>LogicShiftRight(elm, 1)))
   io.out.bits.lpv.zip(lpvShiftRight.transpose).foreach({case(o, i) => o := i.reduce(_|_)})
+
+  chisel3.experimental.annotate(new ChiselAnnotation {
+    def toFirrtl = InlineAnnotation(toNamed)
+  })
 }
 class IntegerStatusArrayEntry extends BasicStatusArrayEntry(2, true){
   val issued = Bool()
 }
 
-class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:Int) extends XSModule{
+class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int) extends XSModule{
   val io = IO(new Bundle{
     val entry = Input(Valid(new IntegerStatusArrayEntry))
     val entryNext = Output(Valid(new IntegerStatusArrayEntry))
@@ -62,7 +68,6 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:I
     val redirect = Input(Valid(new Redirect))
   })
 
-  private val entryId = id.U
   io.entryNext := io.entry
   private val miscNext = WireInit(io.entry)
   private val enqNext = Wire(Valid(new IntegerStatusArrayEntry))
@@ -88,6 +93,7 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:I
   miscNext.bits.issued := Mux(shouldBeCancelled, false.B, Mux(shouldBeIssued, true.B, io.entry.bits.issued))
   srcShouldBeCancelled.zip(miscNext.bits.srcState).foreach{case(en, state) => when(en){state := SrcState.busy}}
   private val miscUpdateEnCancelOrIssue = Cat(shouldBeCancelled, shouldBeIssued).orR
+  xs_assert(!shouldBeIssued || !shouldBeCancelled)
   //End of issue and cancel
 
   //Start of dequeue and redirect
@@ -109,10 +115,11 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:I
       val regularWakeupLpv = io.wakeup.map(wkp => wkp.bits.lpv(idx))
       val lpvUpdateHitsVec = regularWakeupHits :+ earlyWakeUpHit
       val lpvUpdateDataVec = regularWakeupLpv :+ ewkp.bits.lpv
-      val wakeupLpvValid= lpvUpdateHitsVec.reduce(_|_)
+      val wakeupLpvValid = lpvUpdateHitsVec.reduce(_|_)
       val wakeupLpvSelected = Mux1H(lpvUpdateHitsVec, lpvUpdateDataVec)
       nl := Mux(wakeupLpvValid, wakeupLpvSelected, LogicShiftRight(ol,1))
       m := wakeupLpvValid | ol.orR
+      xs_assert(Mux(wakeupLpvValid, !(ol.orR), true.B))
     }
   }
   private val miscUpdateEnLpvUpdate = lpvModified.map(_.reduce(_|_)).reduce(_|_)
@@ -127,6 +134,10 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:I
 
   io.updateEnable := Mux(io.entry.valid, miscUpdateEnWakeUp | miscUpdateEnCancelOrIssue | miscUpdateEnDequeueOrRedirect | miscUpdateEnLpvUpdate, enqUpdateEn)
   io.entryNext := Mux(enqUpdateEn, enqNext, miscNext)
+
+  chisel3.experimental.annotate(new ChiselAnnotation {
+    def toFirrtl = InlineAnnotation(toNamed)
+  })
 }
 
 class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends XSModule{
@@ -172,7 +183,7 @@ class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnit
     .zip(statusArray)
     .zipWithIndex
   ){
-    val updateNetwork = Module(new IntegerStatusArrayEntryUpdateNetwork(issueWidth, wakeupWidth, idx))
+    val updateNetwork = Module(new IntegerStatusArrayEntryUpdateNetwork(issueWidth, wakeupWidth))
     updateNetwork.io.entry.valid := v
     updateNetwork.io.entry.bits := d
     updateNetwork.io.enq.valid := io.enq.valid & io.enq.bits.addrOH(idx)

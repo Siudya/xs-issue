@@ -5,34 +5,7 @@ import chisel3.util._
 import common.{ MicroOp, Redirect}
 import issue.{EarlyWakeUpInfo, WakeUpInfo}
 
-class IntegerPayloadEntryEncoder extends Module{
-  val io = IO(new Bundle{
-    val in = Input(new MicroOp)
-    val out = Output(new MicroOp)
-  })
-  io.out := io.in
-}
-
-class MicroOpToIntegerStatusArrayEntry extends Module{
-  val io = IO(new Bundle{
-    val in = Input(new MicroOp)
-    val out = Output(new IntegerStatusArrayEntry)
-  })
-  io.out.psrc(0) := io.in.psrc(0)
-  io.out.psrc(1) := io.in.psrc(1)
-  io.out.srcType(0) := io.in.ctrl.srcType(0)
-  io.out.srcType(1) := io.in.ctrl.srcType(1)
-  io.out.srcState(0) := io.in.srcState(0)
-  io.out.srcState(1) := io.in.srcState(1)
-  io.out.pdest := io.in.pdest
-  io.out.lpv.foreach(_.foreach(_ := 0.U))
-  io.out.fuType := io.in.ctrl.fuType
-  io.out.rfWen := io.in.ctrl.rfWen
-  io.out.fpWen := io.in.ctrl.fpWen
-  io.out.robIdx := io.in.robIdx
-  io.out.issued := false.B
-}
-class IntegerReservationStationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends Module{
+class IntegerReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends Module{
   val io = IO(new Bundle {
     val redirect = Input(Valid(new Redirect))
 
@@ -51,18 +24,33 @@ class IntegerReservationStationBank(entryNum:Int, issueWidth:Int, wakeupWidth:In
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
   })
 
-  private val enqToStatusCvt = Module(new MicroOpToIntegerStatusArrayEntry)
   private val statusArray = Module(new IntegerStatusArray(entryNum, issueWidth, wakeupWidth, loadUnitNum))
-  private val enqToPayloadCvt = Module(new IntegerPayloadEntryEncoder)
-  private val payloadArray = Module(new PayloadArray(entryNum, issueWidth, "IntegerPayloadArray"))
+  private val payloadArray = Module(new PayloadArray(new MicroOp, entryNum, issueWidth, "IntegerPayloadArray"))
 
-  enqToStatusCvt.io.in := io.enq.bits.data
+  private def EnqToEntry(in: MicroOp): IntegerStatusArrayEntry = {
+    val enqEntry = Wire(new IntegerStatusArrayEntry)
+    enqEntry.psrc(0) := in.psrc(0)
+    enqEntry.psrc(1) := in.psrc(1)
+    enqEntry.srcType(0) := in.ctrl.srcType(0)
+    enqEntry.srcType(1) := in.ctrl.srcType(1)
+    enqEntry.srcState(0) := in.srcState(0)
+    enqEntry.srcState(1) := in.srcState(1)
+    enqEntry.pdest := in.pdest
+    enqEntry.lpv.foreach(_.foreach(_ := 0.U))
+    enqEntry.fuType := in.ctrl.fuType
+    enqEntry.rfWen := in.ctrl.rfWen
+    enqEntry.fpWen := in.ctrl.fpWen
+    enqEntry.robIdx := in.robIdx
+    enqEntry.issued := false.B
+    enqEntry
+  }
+
   statusArray.io.redirect := io.redirect
   io.selectInfo := statusArray.io.selectInfo
   io.allocateInfo := statusArray.io.allocateInfo
   statusArray.io.enq.valid := io.enq.valid
   statusArray.io.enq.bits.addrOH := io.enq.bits.addrOH
-  statusArray.io.enq.bits.data := enqToStatusCvt.io.out
+  statusArray.io.enq.bits.data := EnqToEntry(io.enq.bits.data)
   statusArray.io.issue := io.issueAddr
   statusArray.io.wakeup := io.wakeup
   statusArray.io.loadEarlyWakeup := io.loadEarlyWakeup
@@ -70,8 +58,7 @@ class IntegerReservationStationBank(entryNum:Int, issueWidth:Int, wakeupWidth:In
 
   payloadArray.io.write.en := io.enq.valid
   payloadArray.io.write.addr := io.enq.bits.addrOH
-  enqToPayloadCvt.io.in := io.enq.bits.data
-  payloadArray.io.write.data := enqToPayloadCvt.io.out
+  payloadArray.io.write.data := io.enq.bits.data
   payloadArray.io.read.zip(io.issueAddr).zip(io.issueData).foreach({
     case((port, iAddr), iData) =>{
       port.addr := iAddr.bits

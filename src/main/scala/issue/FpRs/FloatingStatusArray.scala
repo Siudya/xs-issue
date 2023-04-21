@@ -20,13 +20,17 @@
   ****************************************************************************************/
 package issue.FpRs
 import chisel3._
+import chisel3.experimental.ChiselAnnotation
 import chisel3.util._
 import common.{FuOpType, FuType, Redirect, SrcState, SrcType, XSModule}
+import firrtl.passes.InlineAnnotation
 import issue._
 import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
 
-class FloatingSelectInfo extends SelectInfo
+class FloatingSelectInfo extends SelectInfo{
+  val fmaWaitAdd = Bool()
+}
 
 object EntryState{
   def s_idle = 0.U
@@ -53,15 +57,19 @@ class FloatingIssueInfoGenerator extends Module{
   io.out.bits.pdest := ib.pdest
   io.out.bits.fpWen := ib.fpWen
   io.out.bits.rfWen := ib.rfWen
+  io.out.bits.fmaWaitAdd := ib.isFma && ib.srcState(0) === SrcState.rdy && ib.srcState(1) === SrcState.rdy && ib.srcState(2) =/= SrcState.rdy
   private val lpvShiftRight = ib.lpv.map(_.map(elm=>LogicShiftRight(elm, 1)))
   io.out.bits.lpv.zip(lpvShiftRight.transpose).foreach({case(o, i) => o := i.reduce(_|_)})
+  chisel3.experimental.annotate(new ChiselAnnotation {
+    def toFirrtl = InlineAnnotation(toNamed)
+  })
 }
 class FloatingStatusArrayEntry extends BasicStatusArrayEntry(3, false){
   val state = UInt(2.W)
   val isFma = Bool()
 }
 
-class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:Int) extends XSModule{
+class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int) extends XSModule{
   val io = IO(new Bundle{
     val entry = Input(Valid(new FloatingStatusArrayEntry))
     val entryNext = Output(Valid(new FloatingStatusArrayEntry))
@@ -101,7 +109,11 @@ class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:
   private val srcAllReady = io.entry.bits.srcState.map(elm => elm === SrcState.rdy).reduce(_|_)
   private val waitAddIssue = shouldBeIssued && io.entry.bits.srcState(2) =/= SrcState.rdy && isFma
   private val actualIssue = shouldBeIssued && (srcAllReady || !isFma)
-  private val mayNeedReplay = io.entry.bits.lpv.map(_.map(_.orR).reduce(_|_)).reduce(_|_)
+  private val mayNeedReplay = io.entry.bits.lpv
+    .zip(io.entry.bits.srcType)
+    .map({case(l,st) =>
+      l.map(elm => Mux(st === SrcType.fp, false.B, elm.orR)).reduce(_|_)
+    }).reduce(_|_)
   private val state = io.entry.bits.state
   private val stateNext = miscNext.bits.state
   private val miscUpdateEnCancelOrIssue = WireInit(false.B)
@@ -158,10 +170,11 @@ class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:
       val regularWakeupLpv = io.wakeup.map(wkp => wkp.bits.lpv(idx))
       val lpvUpdateHitsVec = regularWakeupHits :+ earlyWakeUpHit
       val lpvUpdateDataVec = regularWakeupLpv :+ ewkp.bits.lpv
-      val wakeupLpvValid= lpvUpdateHitsVec.reduce(_|_)
+      val wakeupLpvValid = lpvUpdateHitsVec.reduce(_|_)
       val wakeupLpvSelected = Mux1H(lpvUpdateHitsVec, lpvUpdateDataVec)
       nl := Mux(wakeupLpvValid, wakeupLpvSelected, LogicShiftRight(ol,1))
       m := wakeupLpvValid | ol.orR
+      xs_assert(Mux(wakeupLpvValid, !(ol.orR), true.B))
     }
   }
   private val miscUpdateEnLpvUpdate = lpvModified.map(_.reduce(_|_)).reduce(_|_)
@@ -176,6 +189,9 @@ class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int, id:
 
   io.updateEnable := Mux(io.entry.valid, miscUpdateEnWakeUp | miscUpdateEnCancelOrIssue | miscUpdateEnDequeueOrRedirect | miscUpdateEnLpvUpdate, enqUpdateEn)
   io.entryNext := Mux(enqUpdateEn, enqNext, miscNext)
+  chisel3.experimental.annotate(new ChiselAnnotation {
+    def toFirrtl = InlineAnnotation(toNamed)
+  })
 }
 
 class FloatingStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends XSModule{
@@ -194,6 +210,7 @@ class FloatingStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUni
     val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
+    val midResultReceived = Input(UInt(entryNum.W))
   })
 
   private val statusArray = Reg(Vec(entryNum, new FloatingStatusArrayEntry))
@@ -221,7 +238,7 @@ class FloatingStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUni
     .zip(statusArray)
     .zipWithIndex
       ){
-    val updateNetwork = Module(new FloatingStatusArrayEntryUpdateNetwork(issueWidth, wakeupWidth, idx))
+    val updateNetwork = Module(new FloatingStatusArrayEntryUpdateNetwork(issueWidth, wakeupWidth))
     updateNetwork.io.entry.valid := v
     updateNetwork.io.entry.bits := d
     updateNetwork.io.enq.valid := io.enq.valid & io.enq.bits.addrOH(idx)
@@ -230,6 +247,7 @@ class FloatingStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUni
     updateNetwork.io.wakeup := io.wakeup
     updateNetwork.io.loadEarlyWakeup := io.loadEarlyWakeup
     updateNetwork.io.earlyWakeUpCancel := io.earlyWakeUpCancel
+    updateNetwork.io.midResultReceived := io.midResultReceived(idx)
     updateNetwork.io.redirect := io.redirect
 
     val en = updateNetwork.io.updateEnable
