@@ -34,6 +34,7 @@ class MulExuImpl(outer:MulExu)(implicit p:Parameters) extends BasicExuImpl(outer
   private val bku = Module(new Bku)
 
   issuePort.issue.ready := true.B
+  issuePort.fmaMidState.out := DontCare
   private val finalIssueSignals = bypassSigGen(io.bypassIn :+ writebackPort, issuePort, outer.bypassInNum > 0)
 
   bku.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === FuType.bku

@@ -36,6 +36,7 @@ class DivExuImpl(outer:DivExu) extends BasicExuImpl(outer) with XSParam{
 
   private val divSel = PickOneHigh(Cat(divs.map(_.io.in.ready).reverse))
   issuePort.issue.ready := divSel.valid
+  issuePort.fmaMidState.out := DontCare
   for(((div, en), arbIn) <- divs.zip(Mux(divSel.valid, divSel.bits, 0.U).asBools).zip(outputArbiter.io.in)){
     div.io.redirectIn := redirectIn
     div.io.in.valid := finalIssueSignals.valid & en

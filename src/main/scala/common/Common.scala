@@ -237,6 +237,8 @@ class CtrlFlow extends XSBundle {
 
 class CtrlSignals extends Bundle {
   val srcType = Vec(3, SrcType())
+  val lsrc = Vec(3, UInt(5.W))
+  val ldest = UInt(5.W)
   val fuType = FuType()
   val fuOpType = FuOpType()
   val rfWen = Bool()

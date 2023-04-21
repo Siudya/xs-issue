@@ -56,7 +56,5 @@ case class DispatchParam
 )
 class IssueBundle extends XSBundle {
   val issue = DecoupledIO(new ExuInput)
-  val fmaMidStateIssue = ValidIO(new FMAMidResult)
-  val fmaWaitForAdd = Output(Bool())
-  val fmaMidStateFeedBack = Flipped(ValidIO(new FMAMidResult))
+  val fmaMidState = Flipped(new FMAMidResultIO)
 }

@@ -8,6 +8,7 @@ import exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, ValName}
 import freechips.rocketchip.macros.ValNameImpl
 import issue._
+import regfile.DecoupledPipeline
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 
 class IntegerReservationStation(bankNum:Int)(implicit p: Parameters) extends LazyModule with XSParam{
@@ -88,6 +89,10 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
         q.io.in.bits.robPtr := source.bits.info.robPtr
         q.io.in.bits.pdest := source.bits.info.pdest
         sink := q.io.out
+        if(snCfg.exuType == ExuType.mul){
+          //Latency of Mul is reduce by bypass, but no bypass to other block. Add an reg here.
+          sink := Pipe(q.io.out, 1)
+        }
       }
       internalWakeupPtr = internalWakeupPtr + snIssueNum
     }
@@ -136,20 +141,24 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
         issueBundle.bits.ctrl.fuType := selectResps.bits.info.fuType
         issueBundle.bits.lpv := selectResps.bits.info.lpv
 
-        val issueDriver = Module(new DecoupledPipeline(!iss_elm._2.hasFastWakeup))
-        issueDriver.io.redirect := io.redirect
-        issueDriver.io.enq.valid := issueBundle.valid
-        issueDriver.io.enq.bits := issueBundle.bits
+        val issueValidDriverReg = RegInit(false.B)
+        val issueBitsDriverReg = Reg(new MicroOp)
+        val issueAllow = !issueValidDriverReg || iss_elm._1.issue.fire
+        when(issueAllow){
+          issueValidDriverReg := issueBundle.valid
+        }
+        when(issueAllow && issueBundle.valid){
+          issueBitsDriverReg := issueBundle.bits
+        }
 
-        iss_elm._1.fmaMidStateIssue.valid := false.B
-        iss_elm._1.fmaMidStateIssue.bits := DontCare
-        iss_elm._1.fmaWaitForAdd := false.B
-        iss_elm._1.issue.valid := issueDriver.io.deq.valid
-        iss_elm._1.issue.bits.uop := issueDriver.io.deq.bits
-        issueDriver.io.deq.ready := iss_elm._1.issue.ready
+        iss_elm._1.fmaMidState.in.valid := false.B
+        iss_elm._1.fmaMidState.in.bits := DontCare
+        iss_elm._1.fmaMidState.waitForAdd := false.B
+        iss_elm._1.issue.valid := issueValidDriverReg
+        iss_elm._1.issue.bits.uop := issueBitsDriverReg
 
         rbAddrPortsForThisPort.zipWithIndex.foreach({ case (rb, bidx) =>
-          rb.valid := selectResps.bits.bankIdxOH(bidx + portIdx * bn) & selectResps.fire
+          rb.valid := selectResps.bits.bankIdxOH(bidx + portIdx * bn) & issueAllow
           rb.bits := selectResps.bits.entryIdxOH
         })
       }

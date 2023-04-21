@@ -29,6 +29,7 @@ class AluExuImpl(outer:AluExu)(implicit p:Parameters) extends BasicExuImpl(outer
   private val writebackPort = outer.writebackNode.out.head._1
 
   issuePort.issue.ready := true.B
+  issuePort.fmaMidState.out := DontCare
   private val finalIssueSignals = bypassSigGen(io.bypassIn, issuePort, outer.bypassInNum > 0)
 
   private val alu = Module(new Alu)

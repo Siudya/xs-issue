@@ -6,9 +6,11 @@ import common.{ExuInput, FuType, Redirect, SrcType, XSParam}
 import exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.config.Parameters
+import fu.fpu.FMAMidResult
 import issue.IssueBundle
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 import xs.utils.Assertion.xs_assert
+import xs.utils.LogicShiftRight
 class FloatPointRegFile (val entriesNum:Int, name:String)(implicit p: Parameters) extends LazyModule with XSParam{
   private val wbNodeParam = WriteBackSinkParam(name, WriteBackSinkType.fpRf)
   val issueNode = new RegfileIssueNode
@@ -28,13 +30,21 @@ class FloatPointRegFileImpl(outer: FloatPointRegFile)(implicit p: Parameters) ex
   private val mem = Mem(outer.entriesNum, UInt(XLEN.W))
   private val wbEnables = writeBacks.map({case(b, _) =>
     b.bits.uop.ctrl.fpWen && b.valid && !b.bits.uop.robIdx.needFlush(io.redirect)
-  })
-  writeBacks.zip(wbEnables).foreach({
-    case((b, _), en) =>
+  }) ++ issueOut.map(_._1.fmaMidState.out.valid)
+  private val fmaMidResultWidth = (new FMAMidResult).getWidth
+  private val writebackTuples = writeBacks.map(elm => (elm._1.bits.uop.pdest, elm._1.bits.data))
+  //Part of FMA middle state is stored in the pdest reg.
+  private val feedbackTuples = issueOut
+    .map(_._1.fmaMidState.out.bits)
+    .map(elm => (elm.pdest, elm.midResult.asTypeOf(UInt(fmaMidResultWidth.W))(XLEN - 1, 0)))
+  //Write Operations
+  (writebackTuples ++ feedbackTuples).zip(wbEnables).foreach({
+    case((dst, data), en) =>
       when(en){
-        mem(b.bits.uop.pdest) := b.bits.data
+        mem(dst) := data
       }
   })
+
   private val wbsWithBypass = writeBacks.filter(_._2.isMemType)
   private val issueOutMap = issueOut.map(elm => elm._2 -> (elm._1, elm._2)).toMap
   for(issI <- issueIn) {
@@ -43,7 +53,7 @@ class FloatPointRegFileImpl(outer: FloatPointRegFile)(implicit p: Parameters) ex
     val bo = issO._1
     val eo = issO._2
     prefix(eo.name + "_" + eo.id) {
-      val lpvCancel = bi.issue.bits.uop.lpv.zip(io.earlyWakeUpCancel).map({ case (i, c) => i(0).asBool & c }).reduce(_ || _)
+      val lpvCancel = bi.issue.bits.uop.lpv.zip(io.earlyWakeUpCancel).map({ case (l, c) => l(1) & c }).reduce(_ || _)
       val outBundle = Wire(Valid(new ExuInput))
       outBundle.valid := bi.issue.valid && !lpvCancel && !bi.issue.bits.uop.robIdx.needFlush(io.redirect)
       outBundle.bits := bi.issue.bits
@@ -51,38 +61,51 @@ class FloatPointRegFileImpl(outer: FloatPointRegFile)(implicit p: Parameters) ex
         .zip(bi.issue.bits.uop.psrc.take(eo.srcNum))
         .zip(bi.issue.bits.uop.ctrl.srcType.take(eo.srcNum))
         .zipWithIndex
-        .foreach({ case (((data, addr), st), idx) =>
-          val bypassOH = wbsWithBypass.map(_._1.bits.uop.pdest).zip(wbEnables).map({ case (dst, en) => en & dst === addr })
-          val bypassData = Mux1H(bypassOH, writeBacks.map(_._1.bits.data))
+        .foreach({ case (((data, addr), st), srcIdx) =>
+          val bypassOH = wbsWithBypass.map(_._1).map({elm => elm.valid && elm.bits.uop.pdest === addr && !elm.bits.uop.robIdx.needFlush(io.redirect)})
+          val bypassData = Mux1H(bypassOH, wbsWithBypass.map(_._1.bits.data))
           val bypassValid = Cat(bypassOH).orR
-          val realAddr = if (idx == 0) Mux(bi.fmaMidStateIssue.valid, bi.issue.bits.uop.pdest, addr) else addr
           when(st === SrcType.fp) {
-            data := Mux(bypassValid, bypassData, mem(realAddr))
+            if(srcIdx == 0) {
+              val realAddr = Mux(bi.fmaMidState.in.valid, bi.issue.bits.uop.pdest, addr)
+              val dataRead = mem.read(realAddr)
+              data := Mux(bi.fmaMidState.in.valid, dataRead,
+                Mux(bypassValid, bypassData, dataRead
+                )
+              )
+              xs_assert(!bi.fmaMidState.in.valid || !bypassValid)
+            } else {
+              data := Mux(bypassValid, bypassData, mem.read(addr))
+            }
           }
           xs_assert(PopCount(bypassOH) === 1.U)
         })
 
       if (eo.srcNum < outBundle.bits.src.length) outBundle.bits.src.slice(eo.srcNum, outBundle.bits.src.length).foreach(_ := DontCare)
-      val outputValidDriverRegs = RegInit(false.B)
-      val outputExuInputDriverRegs = Reg(new ExuInput)
-      val pipelinePermitted = (!outputValidDriverRegs) || bo.issue.fire
-      when(pipelinePermitted) {
-        outputValidDriverRegs := outBundle.valid
-      }
-      when(pipelinePermitted && outBundle.valid) {
-        outputExuInputDriverRegs := outBundle.bits
-      }
 
-      bo.issue.valid := outputValidDriverRegs
-      bo.issue.bits := outputExuInputDriverRegs
-      bo.fmaWaitForAdd := RegNext(bi.fmaWaitForAdd, false.B)
-      bo.fmaMidStateIssue.valid := RegNext(bi.fmaMidStateIssue.valid, false.B)
-      val midStateAsUInt = Wire(UInt(bi.fmaMidStateIssue.bits.getWidth.W))
+
+      val midStateAsUInt = Wire(UInt(fmaMidResultWidth.W))
       midStateAsUInt(XLEN - 1, 0) := outBundle.bits.src(0)
-      midStateAsUInt(bi.fmaMidStateIssue.bits.getWidth - 1, XLEN) := bi.fmaMidStateIssue.bits.asUInt(bi.fmaMidStateIssue.bits.getWidth - 1, XLEN)
-      bo.fmaMidStateIssue.bits := RegEnable(midStateAsUInt.asTypeOf(bo.fmaMidStateIssue.bits), bi.fmaMidStateIssue.valid)
-      bi.issue.ready := pipelinePermitted
-      bi.fmaMidStateFeedBack := bo.fmaMidStateFeedBack
+      midStateAsUInt(fmaMidResultWidth - 1, XLEN) := bi.fmaMidState.in.bits.asUInt(fmaMidResultWidth - 1, XLEN)
+
+      val pipeline = Module(new DecoupledPipeline(true))
+      pipeline.io.redirect := io.redirect
+
+      pipeline.io.enq.issue.valid := outBundle.valid
+      pipeline.io.enq.issue.bits := outBundle.bits
+      bi.issue.ready := pipeline.io.enq.issue.ready
+      pipeline.io.enq.fmaMidState.waitForAdd := bi.fmaMidState.waitForAdd
+      pipeline.io.enq.fmaMidState.in.valid := bi.fmaMidState.in.valid
+      pipeline.io.enq.fmaMidState.in.bits := midStateAsUInt.asTypeOf(bo.fmaMidState.in.bits)
+
+      bo.issue.valid := pipeline.io.deq.issue.valid
+      bo.issue.bits := pipeline.io.deq.issue.bits
+      pipeline.io.deq.issue.ready := bo.issue.ready
+      pipeline.io.deq.fmaMidState.out := DontCare
+      bo.fmaMidState.waitForAdd := pipeline.io.deq.fmaMidState.waitForAdd
+      bo.fmaMidState.in := pipeline.io.deq.fmaMidState.in
+
+      bi.fmaMidState.out := bo.fmaMidState.out
     }
   }
 }

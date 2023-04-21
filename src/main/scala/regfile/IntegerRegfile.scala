@@ -9,6 +9,7 @@ import freechips.rocketchip.config.Parameters
 import issue.IssueBundle
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 import xs.utils.Assertion.xs_assert
+import xs.utils.LogicShiftRight
 class IntegerRegFile(val entriesNum:Int, name:String)(implicit p: Parameters) extends LazyModule with XSParam{
   private val wbNodeParam = WriteBackSinkParam(name, WriteBackSinkType.intRf)
   val issueNode = new RegfileIssueNode
@@ -50,18 +51,19 @@ class IntegerRegFileImpl(outer: IntegerRegFile)(implicit p: Parameters) extends 
     val eo = issO._2
     prefix(eo.name + "_" + eo.id) {
       val outBundle = Wire(Valid(new ExuInput))
-      val lpvCancel = bi.issue.bits.uop.lpv.zip(io.earlyWakeUpCancel).map({ case (i, c) => i(0).asBool & c }).reduce(_ || _)
+      val lpvCancel = bi.issue.bits.uop.lpv.zip(io.earlyWakeUpCancel).map({ case (l, c) => l(1) & c }).reduce(_ || _)
       outBundle.valid := bi.issue.valid && !lpvCancel && !bi.issue.bits.uop.robIdx.needFlush(io.redirect)
       outBundle.bits := bi.issue.bits
       outBundle.bits.src.take(eo.srcNum)
         .zip(bi.issue.bits.uop.psrc.take(eo.srcNum))
+        .zip(bi.issue.bits.uop.ctrl.lsrc.take(eo.srcNum))
         .zip(bi.issue.bits.uop.ctrl.srcType.take(eo.srcNum))
-        .foreach({ case ((data, addr), st) =>
-          val bypassOH = wbsWithBypass.map(_._1.bits.uop.pdest).zip(wbEnables).map({ case (dst, en) => en & dst === addr })
-          val bypassData = Mux1H(bypassOH, writeBacks.map(_._1.bits.data))
+        .foreach({ case (((data, paddr), laddr), st) =>
+          val bypassOH = wbsWithBypass.map(_._1.bits.uop.pdest).zip(wbEnables).map({ case (dst, en) => en & dst === paddr })
+          val bypassData = Mux1H(bypassOH, wbsWithBypass.map(_._1.bits.data))
           val bypassValid = Cat(bypassOH).orR
           when(st === SrcType.reg) {
-            data := Mux(addr === 0.U, 0.U, Mux(bypassValid, bypassData, mem(addr)))
+            data := Mux(laddr === 0.U, 0.U, Mux(bypassValid, bypassData, mem(paddr)))
           }
           xs_assert(PopCount(bypassOH) === 1.U)
         })
@@ -75,23 +77,23 @@ class IntegerRegFileImpl(outer: IntegerRegFile)(implicit p: Parameters) extends 
       val realIssueOut = Wire(new ExuInput)
       realIssueOut := ImmExtractor(eo, outBundle.bits, if (imJmp) Some(io.jmpPcData) else None, if (imJmp) Some(io.jmpTargetData) else None)
 
-      val outputValidDriverRegs = RegInit(false.B)
-      val outputExuInputDriverRegs = Reg(new ExuInput)
-      val pipelinePermitted = (!outputValidDriverRegs) || bo.issue.fire
-      when(pipelinePermitted) {
-        outputValidDriverRegs := outBundle.valid
-      }
-      when(pipelinePermitted && outBundle.valid) {
-        outputExuInputDriverRegs := realIssueOut
-      }
+      val pipeline = Module(new DecoupledPipeline(eo.latency == Int.MaxValue))
+      pipeline.io.redirect := io.redirect
 
-      bo.issue.valid := outputValidDriverRegs
-      bo.issue.bits := outputExuInputDriverRegs
-      bo.fmaWaitForAdd := DontCare
-      bo.fmaMidStateIssue.valid := DontCare
-      bo.fmaMidStateIssue.bits := DontCare
-      bi.issue.ready := pipelinePermitted
-      bi.fmaMidStateFeedBack := DontCare
+      pipeline.io.enq.issue.valid := outBundle.valid
+      pipeline.io.enq.issue.bits := realIssueOut
+      bi.issue.ready := pipeline.io.enq.issue.ready
+      pipeline.io.enq.fmaMidState.waitForAdd := bi.fmaMidState.waitForAdd
+      pipeline.io.enq.fmaMidState.in := bi.fmaMidState.in
+
+      bo.issue.valid := pipeline.io.deq.issue.valid
+      bo.issue.bits := pipeline.io.deq.issue.bits
+      pipeline.io.deq.issue.ready := bo.issue.ready
+      pipeline.io.deq.fmaMidState.out := DontCare
+      bo.fmaMidState.waitForAdd := pipeline.io.deq.fmaMidState.waitForAdd
+      bo.fmaMidState.in := pipeline.io.deq.fmaMidState.in
+
+      bi.fmaMidState.out := DontCare
     }
   }
 }

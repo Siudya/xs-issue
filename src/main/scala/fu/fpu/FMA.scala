@@ -19,7 +19,7 @@ package fu.fpu
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import common.MicroOp
+import common.{MicroOp, XSBundle}
 import fudian._
 import fudian.utils.Multiplier
 
@@ -166,10 +166,13 @@ class FMAMidResult extends FMULToFADD(FPU.ftypes.last.expWidth, FPU.ftypes.last.
     this
   }
 }
-
+class FmaFeedbackBundle extends XSBundle{
+  val pdest = UInt(FprIdxWidth.W)
+  val midResult = new FMAMidResult
+}
 class FMAMidResultIO extends Bundle {
   val in = Flipped(ValidIO(new FMAMidResult))
-  val out = ValidIO(new FMAMidResult)
+  val out = ValidIO(new FmaFeedbackBundle)
   val waitForAdd = Input(Bool())
 }
 
@@ -202,7 +205,7 @@ class FMA(implicit p: Parameters) extends FPUSubModule {
   midResult.out.valid := RegNext(mul_pipe.io.out.valid && waitAddOperand && !mulFlushed)
   midResult.out.bits := mul_pipe.toAdd.getDouble
   when (RegNext(mul_pipe.io.out.bits.uop.ctrl.fpu.typeTagIn === FPU.S)) {
-    midResult.out.bits.fromFloat(mul_pipe.toAdd.getFloat)
+    midResult.out.bits.midResult.fromFloat(mul_pipe.toAdd.getFloat)
   }
   when (midResult.in.valid && !isFMAReg) {
     add_pipe.mulToAdd.getDouble := midResult.in.bits
