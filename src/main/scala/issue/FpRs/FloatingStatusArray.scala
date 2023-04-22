@@ -28,10 +28,6 @@ import issue._
 import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
 
-class FloatingSelectInfo extends SelectInfo{
-  val fmaWaitAdd = Bool()
-}
-
 object EntryState{
   def s_idle = 0.U
   def s_wait_for_mid = 1.U
@@ -42,7 +38,7 @@ object EntryState{
 class FloatingIssueInfoGenerator extends Module{
   val io = IO(new Bundle{
     val in = Input(Valid(new FloatingStatusArrayEntry))
-    val out = Output(Valid(new FloatingSelectInfo))
+    val out = Output(Valid(new SelectInfo))
   })
   private val iv = io.in.valid
   private val ib = io.in.bits
@@ -210,7 +206,7 @@ class FloatingStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUni
     val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
-    val midResultReceived = Input(UInt(entryNum.W))
+    val midResultReceived = Input(Valid(UInt(entryNum.W)))
   })
 
   private val statusArray = Reg(Vec(entryNum, new FloatingStatusArrayEntry))
@@ -247,7 +243,7 @@ class FloatingStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUni
     updateNetwork.io.wakeup := io.wakeup
     updateNetwork.io.loadEarlyWakeup := io.loadEarlyWakeup
     updateNetwork.io.earlyWakeUpCancel := io.earlyWakeUpCancel
-    updateNetwork.io.midResultReceived := io.midResultReceived(idx)
+    updateNetwork.io.midResultReceived := io.midResultReceived.valid & io.midResultReceived.bits(idx)
     updateNetwork.io.redirect := io.redirect
 
     val en = updateNetwork.io.updateEnable

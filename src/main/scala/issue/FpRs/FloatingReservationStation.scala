@@ -11,11 +11,11 @@ import fu.fpu.FMAMidResult
 import issue._
 import regfile.DecoupledPipeline
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
+import xs.utils.Assertion.xs_assert
 
 class FloatingReservationStation(bankNum:Int)(implicit p: Parameters) extends LazyModule with XSParam{
-  private val issueNum = 8
-  private val wbNodeParam = WriteBackSinkParam(name = "Integer RS", sinkType = WriteBackSinkType.intRs)
-  private val rsParam = RsParam(name = "Integer RS", RsType.int, 48, bankNum)
+  private val wbNodeParam = WriteBackSinkParam(name = "Floating RS", sinkType = WriteBackSinkType.fpRs)
+  private val rsParam = RsParam(name = "Floating RS", RsType.fp, 48, bankNum)
   val issueNode = new RsIssueNode(rsParam)
   val wakeupNode = new WriteBackSinkNode(wbNodeParam)
 
@@ -26,23 +26,17 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
   require(param.bankNum == 4)
   require(param.entriesNum % param.bankNum == 0)
   private val issue = outer.issueNode.out.head._1 zip outer.issueNode.out.head._2
-  println("Integer Reservation Issue Ports Config:")
+  println("Floating Reservation Issue Ports Config:")
   outer.issueNode.out.head._2.foreach(cfg => println(cfg))
   private val wbIn = outer.wakeupNode.in.head
   private val wakeup = wbIn._1.zip(wbIn._2)
   issue.foreach(elm => require(ExuType.intTypes.contains(elm._2.exuType)))
-  private val jmpIssue = issue.filter(_._2.exuType == ExuType.jmp)
-  private val aluIssue = issue.filter(_._2.exuType == ExuType.alu)
-  private val mulIssue = issue.filter(_._2.exuType == ExuType.mul)
-  private val divIssue = issue.filter(_._2.exuType == ExuType.div)
-  private val issuePortList = List(jmpIssue, aluIssue, mulIssue, divIssue)
-  require(jmpIssue.nonEmpty && jmpIssue.length <= param.bankNum && (param.bankNum % jmpIssue.length) == 0)
-  require(aluIssue.nonEmpty && aluIssue.length <= param.bankNum && (param.bankNum % aluIssue.length) == 0)
-  require(mulIssue.nonEmpty && mulIssue.length <= param.bankNum && (param.bankNum % mulIssue.length) == 0)
-  require(divIssue.nonEmpty && divIssue.length <= param.bankNum && (param.bankNum % divIssue.length) == 0)
-  private val issueTypeNum = ExuType.intTypes.length
-  private val issueNumForEachFu = issuePortList.map(_.length)
-  private val internalWakeupNum = issue.count(elm => elm._2.latency != Int.MaxValue)
+  private val fmiscIssue = issue.filter(_._2.exuType == ExuType.fmisc)
+  private val fmacIssue = issue.filter(_._2.exuType == ExuType.fmac)
+  private val issuePortList = List(fmiscIssue, fmacIssue)
+  require(fmiscIssue.nonEmpty && fmiscIssue.length <= param.bankNum && (param.bankNum % fmiscIssue.length) == 0)
+  require(fmacIssue.nonEmpty && fmacIssue.length <= param.bankNum && (param.bankNum % fmacIssue.length) == 0)
+  private val issueTypeNum = ExuType.fpTypes.length
   private val entriesNumPerBank = param.entriesNum / param.bankNum
 
   val io = IO(new Bundle{
@@ -50,13 +44,8 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
     val enq = Vec(param.bankNum, Flipped(DecoupledIO(new MicroOp)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
-    val specWakeup = Output(Vec(internalWakeupNum, Valid(new WakeUpInfo)))
   })
   io.enq.suggestName("new_enq")
-
-  private val internalWakeup = Wire(Vec(internalWakeupNum, Valid(new WakeUpInfo)))
-  io.specWakeup := internalWakeup
-  private var internalWakeupPtr = 0
 
   private val wakeupSignals = VecInit(wakeup.map(_._1).map(elm =>{
     val wkp = Wire(Valid(new WakeUpInfo))
@@ -67,9 +56,9 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
     wkp
   }))
   private val rsBankSeq = Seq.tabulate(param.bankNum)( _ => {
-    val mod = Module(new FloatingReservationBank(entriesNumPerBank, issueTypeNum, internalWakeupNum + wakeup.length, loadUnitNum))
+    val mod = Module(new FloatingReservationBank(entriesNumPerBank, issueTypeNum, wakeup.length, loadUnitNum))
     mod.io.redirect := io.redirect
-    mod.io.wakeup := wakeupSignals ++ internalWakeup
+    mod.io.wakeup := wakeupSignals
     mod.io.loadEarlyWakeup := io.loadEarlyWakeup
     mod.io.earlyWakeUpCancel := io.earlyWakeUpCancel
     mod
@@ -79,24 +68,8 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
     val snIssueNum = elm.length
     val snName = elm.head._2.name
     val snCfg = elm.head._2
-    val mod = Module(new SelectNetwork(new FloatingSelectInfo, param.bankNum, entriesNumPerBank, snIssueNum, snCfg, Some(s"Integer${snName}SelectNetwork")))
+    val mod = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, snIssueNum, snCfg, Some(s"Integer${snName}SelectNetwork")))
     mod.io.redirect := io.redirect
-    if(elm.head._2.latency != Int.MaxValue){
-      val wkq = Seq.fill(snIssueNum)(Module(new WakeupQueue(elm.head._2.latency)))
-      for(((q, sink), source) <- wkq.zip(internalWakeup.slice(internalWakeupPtr, internalWakeupPtr + snIssueNum)).zip(mod.io.issueInfo)){
-        q.io.redirect := io.redirect
-        q.io.in.valid := source.valid & source.bits.info.rfWen
-        q.io.in.bits.lpv := source.bits.info.lpv
-        q.io.in.bits.robPtr := source.bits.info.robPtr
-        q.io.in.bits.pdest := source.bits.info.pdest
-        sink := q.io.out
-        if(snCfg.exuType == ExuType.mul){
-          //Latency of Mul is reduce by bypass, but no bypass to other block. Add an reg here.
-          sink := Pipe(q.io.out, 1)
-        }
-      }
-      internalWakeupPtr = internalWakeupPtr + snIssueNum
-    }
     mod
   })
 
@@ -128,7 +101,7 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
     for((iss_elm, portIdx) <- iss.zipWithIndex) {
       prefix(s"${iss_elm._2.name}_${iss_elm._2.id}") {
         val issueBundle = Wire(Valid(new MicroOp))
-        val midStateBundle = Wire(Valid((new FMAMidResult)))
+
         val bn = param.bankNum / iss.length
         val rbAddrPortsForThisPort = rbIssAddrPorts.slice(portIdx * bn, portIdx * bn + bn)
         val rbUopPortsForThisPort = rbIssUopPorts.slice(portIdx * bn, portIdx * bn + bn)
@@ -145,23 +118,56 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
         issueBundle.bits.ctrl.fuType := selectResps.bits.info.fuType
         issueBundle.bits.lpv := selectResps.bits.info.lpv
 
-        midStateBundle := Mux1H(rbMidStatePortsForThisPort.map(elm => (elm.valid, elm.bits)))
-
+        val midState = Wire(Valid(new FMAMidResult))
         val issueValidDriverReg = RegInit(false.B)
         val issueBitsDriverReg = Reg(new MicroOp)
+        val issueMidStateValidDriverReg = RegInit(false.B)
+        val issueMidStateDataDriverReg = Reg(new FMAMidResult)
+        val waitForAdd = RegInit(false.B)
         val issueAllow = !issueValidDriverReg || iss_elm._1.issue.fire
         when(issueAllow){
           issueValidDriverReg := issueBundle.valid
         }
         when(issueAllow && issueBundle.valid){
           issueBitsDriverReg := issueBundle.bits
+          issueMidStateValidDriverReg := midState.valid
+          issueMidStateDataDriverReg := midState.bits
+          waitForAdd := selectResps.bits.info.fmaWaitAdd
         }
 
-        iss_elm._1.fmaMidState.in.valid := false.B
-        iss_elm._1.fmaMidState.in.bits := DontCare
-        iss_elm._1.fmaMidState.waitForAdd := false.B
         iss_elm._1.issue.valid := issueValidDriverReg
         iss_elm._1.issue.bits.uop := issueBitsDriverReg
+        iss_elm._1.fmaMidState.in.valid := issueMidStateValidDriverReg
+        iss_elm._1.fmaMidState.in.bits := issueMidStateDataDriverReg
+        iss_elm._1.fmaMidState.waitForAdd := waitForAdd
+
+        val banksForThisPort = rsBankSeq.slice(portIdx * bn, portIdx * bn + bn)
+        if(iss_elm._2.exuType == ExuType.fmac){
+          val midStateWaitQueue = Module(new MidStateWaitQueue(selectResps.bits.bankIdxOH.getWidth, selectResps.bits.entryIdxOH.getWidth))
+          midStateWaitQueue.io.redirect := io.redirect
+          midStateWaitQueue.io.in.valid := iss_elm._1.issue.fire
+          midStateWaitQueue.io.in.bits := RegEnable(selectResps.bits, issueAllow)
+          banksForThisPort.zipWithIndex.foreach({case(u,idx) =>
+            u.io.midResultReceived.valid := midStateWaitQueue.io.earlyWakeUp.valid && midStateWaitQueue.io.earlyWakeUp.bits.bankIdxOH(portIdx * bn + idx)
+            u.io.midResultReceived.bits := midStateWaitQueue.io.earlyWakeUp.bits.entryIdxOH
+            u.io.midStateEnq.valid := midStateWaitQueue.io.out.valid
+            u.io.midStateEnq.bits := iss_elm._1.fmaMidState.out.bits.midResult.asTypeOf(UInt(midState.getWidth.W))(midState.getWidth - 1, XLEN)
+          })
+          val isMidStateBypass = midStateWaitQueue.io.out.valid && selectResps.valid && midStateWaitQueue.io.out.bits.info.robPtr === selectResps.bits.info.robPtr
+          val midStatePayload = Wire(Valid(new FMAMidResult))
+          midStatePayload := Mux1H(rbMidStatePortsForThisPort.map(elm => (elm.valid, elm.bits)))
+          val midStateBypass = Wire(Valid(new FMAMidResult))
+          midStateBypass.valid := iss_elm._1.fmaMidState.out.valid
+          midStateBypass.bits := iss_elm._1.fmaMidState.out.bits.midResult
+          midState := Mux(isMidStateBypass, midStateBypass, midStatePayload)
+          xs_assert(
+            midStateWaitQueue.io.out.valid === iss_elm._1.fmaMidState.out.valid &&
+              iss_elm._1.fmaMidState.out.bits.pdest === midStateWaitQueue.io.earlyWakeUp.bits.info.pdest,
+            "MidState should be returned in a predictable latency with correct target!")
+        } else {
+          midState.valid := false.B
+          midState.bits := DontCare
+        }
 
         rbAddrPortsForThisPort.zipWithIndex.foreach({ case (rb, bidx) =>
           rb.valid := selectResps.bits.bankIdxOH(bidx + portIdx * bn) & issueAllow

@@ -28,12 +28,10 @@ import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
 import firrtl.passes.InlineAnnotation
 
-class IntegerSelectInfo extends SelectInfo
-
 class IntegerIssueInfoGenerator extends Module{
   val io = IO(new Bundle{
     val in = Input(Valid(new IntegerStatusArrayEntry))
-    val out = Output(Valid(new IntegerSelectInfo))
+    val out = Output(Valid(new SelectInfo))
   })
   private val iv = io.in.valid
   private val ib = io.in.bits
@@ -46,6 +44,7 @@ class IntegerIssueInfoGenerator extends Module{
   io.out.bits.rfWen := ib.rfWen
   private val lpvShiftRight = ib.lpv.map(_.map(elm=>LogicShiftRight(elm, 1)))
   io.out.bits.lpv.zip(lpvShiftRight.transpose).foreach({case(o, i) => o := i.reduce(_|_)})
+  io.out.bits.fmaWaitAdd := false.B
 
   chisel3.experimental.annotate(new ChiselAnnotation {
     def toFirrtl = InlineAnnotation(toNamed)

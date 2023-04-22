@@ -12,7 +12,6 @@ import regfile.DecoupledPipeline
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 
 class IntegerReservationStation(bankNum:Int)(implicit p: Parameters) extends LazyModule with XSParam{
-  private val issueNum = 8
   private val wbNodeParam = WriteBackSinkParam(name = "Integer RS", sinkType = WriteBackSinkType.intRs)
   private val rsParam = RsParam(name = "Integer RS", RsType.int, 48, bankNum)
   val issueNode = new RsIssueNode(rsParam)
@@ -78,7 +77,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     val snIssueNum = elm.length
     val snName = elm.head._2.name
     val snCfg = elm.head._2
-    val mod = Module(new SelectNetwork(new IntegerSelectInfo, param.bankNum, entriesNumPerBank, snIssueNum, snCfg, Some(s"Integer${snName}SelectNetwork")))
+    val mod = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, snIssueNum, snCfg, Some(s"Integer${snName}SelectNetwork")))
     mod.io.redirect := io.redirect
     if(elm.head._2.latency != Int.MaxValue){
       val wkq = Seq.fill(snIssueNum)(Module(new WakeupQueue(elm.head._2.latency)))

@@ -11,7 +11,7 @@ class FloatingReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loa
   val io = IO(new Bundle {
     val redirect = Input(Valid(new Redirect))
 
-    val selectInfo = Output(Vec(entryNum, Valid(new FloatingSelectInfo)))
+    val selectInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
     val allocateInfo = Output(UInt(entryNum.W))
 
     val enq = Input(Valid(new Bundle {
@@ -30,6 +30,7 @@ class FloatingReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loa
     val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
+    val midResultReceived = Input(Valid(UInt(entryNum.W)))
   })
 
   private val statusArray = Module(new FloatingStatusArray(entryNum, issueWidth, wakeupWidth, loadUnitNum))
@@ -62,6 +63,7 @@ class FloatingReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loa
   statusArray.io.wakeup := io.wakeup
   statusArray.io.loadEarlyWakeup := io.loadEarlyWakeup
   statusArray.io.earlyWakeUpCancel := io.earlyWakeUpCancel
+  statusArray.io.midResultReceived := io.midResultReceived
 
   payloadArray.io.write.en := io.enq.valid
   payloadArray.io.write.addr := io.enq.bits.addrOH

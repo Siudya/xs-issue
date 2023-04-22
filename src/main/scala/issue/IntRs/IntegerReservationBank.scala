@@ -9,7 +9,7 @@ class IntegerReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, load
   val io = IO(new Bundle {
     val redirect = Input(Valid(new Redirect))
 
-    val selectInfo = Output(Vec(entryNum, Valid(new IntegerSelectInfo)))
+    val selectInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
     val allocateInfo = Output(UInt(entryNum.W))
 
     val enq = Input(Valid(new Bundle {

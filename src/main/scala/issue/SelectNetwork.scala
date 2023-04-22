@@ -33,18 +33,19 @@ class SelectInfo extends XSBundle{
   val rfWen = Bool()
   val fpWen = Bool()
   val robPtr = new RobPtr
+  val fmaWaitAdd = Bool()
 }
 
-class SelectResp[T <: SelectInfo](gen:T, bankIdxWidth:Int, entryIdxWidth:Int) extends XSBundle {
-  val info = gen.cloneType
+class SelectResp(bankIdxWidth:Int, entryIdxWidth:Int) extends XSBundle {
+  val info = new SelectInfo
   val entryIdxOH = UInt(entryIdxWidth.W)
   val bankIdxOH = UInt(bankIdxWidth.W)
 }
-class SelectMux[T <: SelectInfo](gen:T, bankIdxWidth:Int, entryIdxWidth:Int) extends Module{
+class SelectMux(bankIdxWidth:Int, entryIdxWidth:Int) extends Module{
   val io = IO(new Bundle{
-    val in0 = Input(Valid(new SelectResp(gen, bankIdxWidth, entryIdxWidth)))
-    val in1 = Input(Valid(new SelectResp(gen, bankIdxWidth, entryIdxWidth)))
-    val out = Output(Valid(new SelectResp(gen, bankIdxWidth, entryIdxWidth)))
+    val in0 = Input(Valid(new SelectResp(bankIdxWidth, entryIdxWidth)))
+    val in1 = Input(Valid(new SelectResp(bankIdxWidth, entryIdxWidth)))
+    val out = Output(Valid(new SelectResp(bankIdxWidth, entryIdxWidth)))
   })
   private val valid0 = io.in0.valid
   private val valid1 = io.in1.valid
@@ -56,22 +57,22 @@ class SelectMux[T <: SelectInfo](gen:T, bankIdxWidth:Int, entryIdxWidth:Int) ext
   io.out := res
 }
 object SelectMux{
-  def apply[T <: SelectInfo](gen:T, in0: Valid[SelectResp[T]], in1: Valid[SelectResp[T]], bankIdxWidth:Int, entryIdxWidth:Int):Valid[SelectResp[T]] = {
-    val smux = Module(new SelectMux(gen, bankIdxWidth, entryIdxWidth))
+  def apply(in0: Valid[SelectResp], in1: Valid[SelectResp], bankIdxWidth:Int, entryIdxWidth:Int):Valid[SelectResp] = {
+    val smux = Module(new SelectMux(bankIdxWidth, entryIdxWidth))
     smux.io.in0 := in0
     smux.io.in1 := in1
     smux.io.out
   }
 }
 
-class Selector[T <: SelectInfo](gen:T, bankNum:Int, entryNum:Int, inputWidth:Int) extends Module{
+class Selector(bankNum:Int, entryNum:Int, inputWidth:Int) extends Module{
   private val bankIdxWidth = bankNum
   private val entryIdxWidth = entryNum
   val io = IO(new Bundle{
-    val in = Input(Vec(inputWidth, Valid(new SelectResp(gen, bankIdxWidth, entryIdxWidth))))
-    val out = Output(Valid(new SelectResp(gen, bankIdxWidth, entryIdxWidth)))
+    val in = Input(Vec(inputWidth, Valid(new SelectResp(bankIdxWidth, entryIdxWidth))))
+    val out = Output(Valid(new SelectResp(bankIdxWidth, entryIdxWidth)))
   })
-  private val operationFunction = SelectMux(gen, _:Valid[SelectResp[T]], _:Valid[SelectResp[T]], bankIdxWidth, entryIdxWidth)
+  private val operationFunction = SelectMux(_, _, bankIdxWidth, entryIdxWidth)
   private val res  = ParallelOperation(io.in, operationFunction)
   io.out := res
 }
@@ -116,13 +117,13 @@ class Selector[T <: SelectInfo](gen:T, bankNum:Int, entryNum:Int, inputWidth:Int
   * }}}
 */
 
-class SelectNetwork[T <: SelectInfo](gen:T, bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name:Option[String] = None) extends XSModule {
+class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name:Option[String] = None) extends XSModule {
   require(issueNum <= bankNum && 0 < issueNum && bankNum % issueNum == 0, "Illegal number of issue ports are supported now!")
   private val fuTypeList = cfg.fuConfigs.map(_.fuType)
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
     val selectInfo = Input(Vec(bankNum,Vec(entryNum, Valid(new SelectInfo))))
-    val issueInfo = Output(Vec(issueNum, Valid(new SelectResp(gen, bankNum, entryNum))))
+    val issueInfo = Output(Vec(issueNum, Valid(new SelectResp(bankNum, entryNum))))
   })
   override val desiredName:String = name.getOrElse("SelectNetwork")
 
@@ -135,7 +136,7 @@ class SelectNetwork[T <: SelectInfo](gen:T, bankNum:Int, entryNum:Int, issueNum:
   })
 
   private val bankNumPerSelector = bankNum / issueNum
-  private val selectorSeq = Seq.fill(issueNum)(Module(new Selector(gen, bankNum, entryNum, bankNumPerSelector * entryNum)))
+  private val selectorSeq = Seq.fill(issueNum)(Module(new Selector(bankNum, entryNum, bankNumPerSelector * entryNum)))
 
   private val selectorInput = Seq.tabulate(issueNum)({idx =>
     issueAllDataList.slice(idx*bankNumPerSelector, idx*bankNumPerSelector + bankNumPerSelector).reduce(_++_)

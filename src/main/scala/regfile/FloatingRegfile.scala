@@ -88,7 +88,7 @@ class FloatPointRegFileImpl(outer: FloatPointRegFile)(implicit p: Parameters) ex
       midStateAsUInt(XLEN - 1, 0) := outBundle.bits.src(0)
       midStateAsUInt(fmaMidResultWidth - 1, XLEN) := bi.fmaMidState.in.bits.asUInt(fmaMidResultWidth - 1, XLEN)
 
-      val pipeline = Module(new DecoupledPipeline(true))
+      val pipeline = Module(new DecoupledPipeline(eo.exuType == ExuType.fmisc))
       pipeline.io.redirect := io.redirect
 
       pipeline.io.enq.issue.valid := outBundle.valid
