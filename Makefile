@@ -2,8 +2,14 @@ init:
 	git submodule update --init
 	cd rocket-chip && git submodule update --init api-config-chipsalliance hardfloat
 
-rtl: clean
-	mill xs-issue.test.runMain GenRtl -td build --full-stacktrace -X sverilog -e sverilog --emission-options disableRegisterRandomization --no-cse
+intrtl: clean
+	mill xs-issue.test.runMain GenIntRtl -td build --full-stacktrace -X sverilog -e sverilog --emission-options disableRegisterRandomization --no-cse
+	sed -i 's/\?baifenhao\!/%/g' build/*.sv
+	rm build/*.fir
+	rm build/*.anno.json
+
+fprtl: clean
+	mill xs-issue.test.runMain GenFpRtl -td build --full-stacktrace -X sverilog -e sverilog --emission-options disableRegisterRandomization --no-cse
 	sed -i 's/\?baifenhao\!/%/g' build/*.sv
 	rm build/*.fir
 	rm build/*.anno.json

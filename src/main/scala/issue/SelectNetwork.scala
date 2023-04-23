@@ -34,6 +34,7 @@ class SelectInfo extends XSBundle{
   val fpWen = Bool()
   val robPtr = new RobPtr
   val fmaWaitAdd = Bool()
+  val midResultReadEn = Bool()
 }
 
 class SelectResp(bankIdxWidth:Int, entryIdxWidth:Int) extends XSBundle {

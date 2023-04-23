@@ -11,14 +11,14 @@ import issue.IssueBundle
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
-class FloatPointRegFile (val entriesNum:Int, name:String)(implicit p: Parameters) extends LazyModule with XSParam{
+class FloatingRegFile (val entriesNum:Int, name:String)(implicit p: Parameters) extends LazyModule with XSParam{
   private val wbNodeParam = WriteBackSinkParam(name, WriteBackSinkType.fpRf)
   val issueNode = new RegfileIssueNode
   val writeBackNode = new WriteBackSinkNode(wbNodeParam)
-  lazy val module = new FloatPointRegFileImpl(this)
+  lazy val module = new FloatingRegFileImpl(this)
 }
 
-class FloatPointRegFileImpl(outer: FloatPointRegFile)(implicit p: Parameters) extends LazyModuleImp(outer) with XSParam{
+class FloatingRegFileImpl(outer: FloatingRegFile)(implicit p: Parameters) extends LazyModuleImp(outer) with XSParam{
   private val issueIn = outer.issueNode.in.head._1 zip outer.issueNode.in.head._2
   private val issueOut = outer.issueNode.out
   val io = IO(new Bundle{
@@ -62,9 +62,17 @@ class FloatPointRegFileImpl(outer: FloatPointRegFile)(implicit p: Parameters) ex
         .zip(bi.issue.bits.uop.ctrl.srcType.take(eo.srcNum))
         .zipWithIndex
         .foreach({ case (((data, addr), st), srcIdx) =>
-          val bypassOH = wbsWithBypass.map(_._1).map({elm => elm.valid && elm.bits.uop.pdest === addr && !elm.bits.uop.robIdx.needFlush(io.redirect)})
-          val bypassData = Mux1H(bypassOH, wbsWithBypass.map(_._1.bits.data))
-          val bypassValid = Cat(bypassOH).orR
+          val bypassData = Wire(UInt(XLEN.W))
+          val bypassValid = Wire(Bool())
+          if(wbsWithBypass.nonEmpty) {
+            val bypassOH = wbsWithBypass.map(_._1).map({ elm => elm.valid && elm.bits.uop.pdest === addr && !elm.bits.uop.robIdx.needFlush(io.redirect) })
+            bypassData := Mux1H(bypassOH, wbsWithBypass.map(_._1.bits.data))
+            bypassValid := Cat(bypassOH).orR
+            xs_assert(PopCount(bypassOH) === 1.U)
+          } else {
+            bypassData := DontCare
+            bypassValid := false.B
+          }
           when(st === SrcType.fp) {
             if(srcIdx == 0) {
               val realAddr = Mux(bi.fmaMidState.in.valid, bi.issue.bits.uop.pdest, addr)
@@ -78,15 +86,13 @@ class FloatPointRegFileImpl(outer: FloatPointRegFile)(implicit p: Parameters) ex
               data := Mux(bypassValid, bypassData, mem.read(addr))
             }
           }
-          xs_assert(PopCount(bypassOH) === 1.U)
         })
 
       if (eo.srcNum < outBundle.bits.src.length) outBundle.bits.src.slice(eo.srcNum, outBundle.bits.src.length).foreach(_ := DontCare)
 
 
       val midStateAsUInt = Wire(UInt(fmaMidResultWidth.W))
-      midStateAsUInt(XLEN - 1, 0) := outBundle.bits.src(0)
-      midStateAsUInt(fmaMidResultWidth - 1, XLEN) := bi.fmaMidState.in.bits.asUInt(fmaMidResultWidth - 1, XLEN)
+      midStateAsUInt := Cat(bi.fmaMidState.in.bits.asUInt(fmaMidResultWidth - 1, XLEN), outBundle.bits.src(0))
 
       val pipeline = Module(new DecoupledPipeline(eo.exuType == ExuType.fmisc))
       pipeline.io.redirect := io.redirect

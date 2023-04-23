@@ -59,13 +59,20 @@ class IntegerRegFileImpl(outer: IntegerRegFile)(implicit p: Parameters) extends 
         .zip(bi.issue.bits.uop.ctrl.lsrc.take(eo.srcNum))
         .zip(bi.issue.bits.uop.ctrl.srcType.take(eo.srcNum))
         .foreach({ case (((data, paddr), laddr), st) =>
-          val bypassOH = wbsWithBypass.map(_._1.bits.uop.pdest).zip(wbEnables).map({ case (dst, en) => en & dst === paddr })
-          val bypassData = Mux1H(bypassOH, wbsWithBypass.map(_._1.bits.data))
-          val bypassValid = Cat(bypassOH).orR
+          val bypassData = Wire(UInt(XLEN.W))
+          val bypassValid = Wire(Bool())
+          if (wbsWithBypass.nonEmpty) {
+            val bypassOH = wbsWithBypass.map(_._1).map({ elm => elm.valid && elm.bits.uop.pdest === paddr && !elm.bits.uop.robIdx.needFlush(io.redirect) })
+            bypassData := Mux1H(bypassOH, wbsWithBypass.map(_._1.bits.data))
+            bypassValid := Cat(bypassOH).orR
+            xs_assert(PopCount(bypassOH) === 1.U)
+          } else {
+            bypassData := DontCare
+            bypassValid := false.B
+          }
           when(st === SrcType.reg) {
             data := Mux(laddr === 0.U, 0.U, Mux(bypassValid, bypassData, mem(paddr)))
           }
-          xs_assert(PopCount(bypassOH) === 1.U)
         })
 
       if (eo.srcNum < outBundle.bits.src.length) outBundle.bits.src.slice(eo.srcNum, outBundle.bits.src.length).foreach(_ := DontCare)

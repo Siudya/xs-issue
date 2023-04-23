@@ -45,6 +45,7 @@ class IntegerIssueInfoGenerator extends Module{
   private val lpvShiftRight = ib.lpv.map(_.map(elm=>LogicShiftRight(elm, 1)))
   io.out.bits.lpv.zip(lpvShiftRight.transpose).foreach({case(o, i) => o := i.reduce(_|_)})
   io.out.bits.fmaWaitAdd := false.B
+  io.out.bits.midResultReadEn := false.B
 
   chisel3.experimental.annotate(new ChiselAnnotation {
     def toFirrtl = InlineAnnotation(toNamed)

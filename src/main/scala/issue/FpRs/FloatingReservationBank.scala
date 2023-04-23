@@ -19,14 +19,14 @@ class FloatingReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loa
       val data = new MicroOp
     }))
 
-    val midStateEnq = Input(Valid(new Bundle {
+    val midResultEnq = Input(Valid(new Bundle {
       val addrOH = UInt(entryNum.W)
-      val data = Valid(UInt(rsMidStateWidth.W))
+      val data = UInt(rsMidStateWidth.W)
     }))
 
     val issueAddr = Input(Vec(issueWidth, Valid(UInt(entryNum.W))))
     val issueUop = Output(Vec(issueWidth, Valid(new MicroOp)))
-    val issueMidState = Output(Vec(issueWidth, Valid(UInt(rsMidStateWidth.W))))
+    val issueMidResult = Output(Vec(issueWidth, UInt(rsMidStateWidth.W)))
     val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
@@ -35,7 +35,7 @@ class FloatingReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loa
 
   private val statusArray = Module(new FloatingStatusArray(entryNum, issueWidth, wakeupWidth, loadUnitNum))
   private val payloadArray = Module(new PayloadArray(new MicroOp, entryNum, issueWidth, "FloatingPayloadArray"))
-  private val midStatePayloadArray = Module(new PayloadArray(Valid(UInt(rsMidStateWidth.W)), entryNum, issueWidth, "FloatingFmaMidStatePayloadArray"))
+  private val midStatePayloadArray = Module(new PayloadArray(UInt(rsMidStateWidth.W), entryNum, issueWidth, "FloatingFmaMidStatePayloadArray"))
 
   private def EnqToEntry(in: MicroOp): FloatingStatusArrayEntry = {
     val enqEntry = Wire(new FloatingStatusArrayEntry)
@@ -76,14 +76,13 @@ class FloatingReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loa
     }
   })
 
-  midStatePayloadArray.io.write.en := io.midStateEnq.valid
-  midStatePayloadArray.io.write.addr := io.midStateEnq.bits.addrOH
-  midStatePayloadArray.io.write.data := io.midStateEnq.bits.data
-  midStatePayloadArray.io.read.zip(io.issueAddr).zip(io.issueMidState).foreach({
+  midStatePayloadArray.io.write.en := io.midResultEnq.valid
+  midStatePayloadArray.io.write.addr := io.midResultEnq.bits.addrOH
+  midStatePayloadArray.io.write.data := io.midResultEnq.bits.data
+  midStatePayloadArray.io.read.zip(io.issueAddr).zip(io.issueMidResult).foreach({
     case ((port, iAddr), iData) => {
       port.addr := iAddr.bits
-      iData.bits := port.data
-      iData.valid := iAddr.valid
+      iData := port.data
     }
   })
 }

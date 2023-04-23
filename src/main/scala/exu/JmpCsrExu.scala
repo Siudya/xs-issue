@@ -53,7 +53,7 @@ class JmpCsrExuImpl(outer:JmpCsrExu)(implicit p:Parameters) extends BasicExuImpl
   })
   private val inFuHits = outer.cfg.fuConfigs.map({cfg => finalIssueSignals.bits.uop.ctrl.fuType === cfg.fuType})
   xs_assert(Mux(issuePort.issue.valid, PopCount(Cat(inFuHits)) === 1.U, true.B))
-  issuePort.issue.ready := fuReadies.reduce(_|_)
+  issuePort.issue.ready := Mux1H(inFuHits, fuReadies)
   issuePort.fmaMidState.out := DontCare
 
   writebackPort.valid := outputArbiter.io.out.valid

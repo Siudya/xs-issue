@@ -54,6 +54,7 @@ class FloatingIssueInfoGenerator extends Module{
   io.out.bits.fpWen := ib.fpWen
   io.out.bits.rfWen := ib.rfWen
   io.out.bits.fmaWaitAdd := ib.isFma && ib.srcState(0) === SrcState.rdy && ib.srcState(1) === SrcState.rdy && ib.srcState(2) =/= SrcState.rdy
+  io.out.bits.midResultReadEn := ib.isFma && fmaIssueCond1
   private val lpvShiftRight = ib.lpv.map(_.map(elm=>LogicShiftRight(elm, 1)))
   io.out.bits.lpv.zip(lpvShiftRight.transpose).foreach({case(o, i) => o := i.reduce(_|_)})
   chisel3.experimental.annotate(new ChiselAnnotation {

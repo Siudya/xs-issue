@@ -159,4 +159,6 @@ class FPToInt(implicit p: Parameters) extends FPUPipelineModule {
   override val dataModule = Module(new FPToIntDataModule(latency))
   connectDataModule
   dataModule.regEnables <> VecInit((1 to latency) map (i => regEnable(i)))
+  io.out.valid := validVec.last
+  io.out.bits.uop := uopVec.last
 }

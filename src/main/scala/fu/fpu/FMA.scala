@@ -203,7 +203,8 @@ class FMA(implicit p: Parameters) extends FPUSubModule {
 
   add_pipe.mulToAdd <> mul_pipe.toAdd
   midResult.out.valid := RegNext(mul_pipe.io.out.valid && waitAddOperand && !mulFlushed)
-  midResult.out.bits := mul_pipe.toAdd.getDouble
+  midResult.out.bits.midResult := mul_pipe.toAdd.getDouble
+  midResult.out.bits.pdest := mul_pipe.toAdd.uop.pdest
   when (RegNext(mul_pipe.io.out.bits.uop.ctrl.fpu.typeTagIn === FPU.S)) {
     midResult.out.bits.midResult.fromFloat(mul_pipe.toAdd.getFloat)
   }

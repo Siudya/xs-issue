@@ -30,7 +30,7 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
   outer.issueNode.out.head._2.foreach(cfg => println(cfg))
   private val wbIn = outer.wakeupNode.in.head
   private val wakeup = wbIn._1.zip(wbIn._2)
-  issue.foreach(elm => require(ExuType.intTypes.contains(elm._2.exuType)))
+  issue.foreach(elm => require(ExuType.fpTypes.contains(elm._2.exuType)))
   private val fmiscIssue = issue.filter(_._2.exuType == ExuType.fmisc)
   private val fmacIssue = issue.filter(_._2.exuType == ExuType.fmac)
   private val issuePortList = List(fmiscIssue, fmacIssue)
@@ -97,7 +97,7 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
   for(((iss, sn), fuIdx) <- issuePortList.zip(selectNetworkSeq).zipWithIndex){
     val rbIssAddrPorts = rsBankSeq.map(_.io.issueAddr(fuIdx))
     val rbIssUopPorts = rsBankSeq.map(_.io.issueUop(fuIdx))
-    val rbIssMidStatePorts = rsBankSeq.map(_.io.issueMidState(fuIdx))
+    val rbIssMidStatePorts = rsBankSeq.map(_.io.issueMidResult(fuIdx))
     for((iss_elm, portIdx) <- iss.zipWithIndex) {
       prefix(s"${iss_elm._2.name}_${iss_elm._2.id}") {
         val issueBundle = Wire(Valid(new MicroOp))
@@ -150,12 +150,16 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
           banksForThisPort.zipWithIndex.foreach({case(u,idx) =>
             u.io.midResultReceived.valid := midStateWaitQueue.io.earlyWakeUp.valid && midStateWaitQueue.io.earlyWakeUp.bits.bankIdxOH(portIdx * bn + idx)
             u.io.midResultReceived.bits := midStateWaitQueue.io.earlyWakeUp.bits.entryIdxOH
-            u.io.midStateEnq.valid := midStateWaitQueue.io.out.valid
-            u.io.midStateEnq.bits := iss_elm._1.fmaMidState.out.bits.midResult.asTypeOf(UInt(midState.getWidth.W))(midState.getWidth - 1, XLEN)
+            u.io.midResultEnq.valid := midStateWaitQueue.io.out.valid
+            u.io.midResultEnq.bits.addrOH := midStateWaitQueue.io.out.bits.entryIdxOH
+            u.io.midResultEnq.bits.data := iss_elm._1.fmaMidState.out.bits.midResult.asTypeOf(UInt(midState.getWidth.W))(midState.getWidth - 1, XLEN)
           })
           val isMidStateBypass = midStateWaitQueue.io.out.valid && selectResps.valid && midStateWaitQueue.io.out.bits.info.robPtr === selectResps.bits.info.robPtr
           val midStatePayload = Wire(Valid(new FMAMidResult))
-          midStatePayload := Mux1H(rbMidStatePortsForThisPort.map(elm => (elm.valid, elm.bits)))
+          val bankSel = selectResps.bits.bankIdxOH.asBools.slice(portIdx * bn, portIdx * bn + bn)
+          val bankMidResult = Mux1H(bankSel, rbMidStatePortsForThisPort)
+          midStatePayload.valid := Cat(bankSel).orR && selectResps.bits.info.midResultReadEn
+          midStatePayload.bits := Cat(bankMidResult, 0.U(XLEN.W)).asTypeOf(new FMAMidResult)
           val midStateBypass = Wire(Valid(new FMAMidResult))
           midStateBypass.valid := iss_elm._1.fmaMidState.out.valid
           midStateBypass.bits := iss_elm._1.fmaMidState.out.bits.midResult

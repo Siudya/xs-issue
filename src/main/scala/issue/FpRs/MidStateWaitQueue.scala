@@ -13,19 +13,21 @@ class MidStateWaitQueue(bankIdxWidth:Int, entryIdxWidth:Int) extends Module{
     val earlyWakeUp = Output(Valid(new SelectResp(bankIdxWidth, entryIdxWidth)))
   })
   private val latency = 3
-  private val validRegs = RegInit(VecInit(Seq.fill(latency)(false.B)))
-  private val dataRegs = List.fill(latency)(Reg(new SelectResp(bankIdxWidth, entryIdxWidth)))
-  for(idx <- (io.in.valid +: validRegs).indices){
+  private val validRegs = Array.fill(latency)(RegInit(false.B))
+  private val dataRegs = Array.fill(latency)(Reg(new SelectResp(bankIdxWidth, entryIdxWidth)))
+  private val validVec = io.in.valid +: validRegs
+  private val dataVec = io.in.bits +: dataRegs
+  for(idx <- validVec.indices){
     if(idx == 1){
-      validRegs(idx) := validRegs(idx - 1)
-      when(validRegs(idx - 1)) {
-        dataRegs(idx) := dataRegs(idx - 1)
+      validVec(idx) := validVec(idx - 1)
+      when(validVec(idx - 1)) {
+        dataVec(idx) := dataVec(idx - 1)
       }
     } else if(idx > 1){
-      val valid = validRegs(idx - 1) & !dataRegs(idx - 1).info.robPtr.needFlush(io.redirect)
-      validRegs(idx) := valid
+      val valid = validVec(idx - 1) & !dataVec(idx - 1).info.robPtr.needFlush(io.redirect)
+      validVec(idx) := valid
       when(valid) {
-        dataRegs(idx) := dataRegs(idx - 1)
+        dataVec(idx) := dataVec(idx - 1)
       }
     }
   }
