@@ -8,7 +8,7 @@ import fu.fpu.{FDivSqrt, FPToFP, FPToInt}
 import xs.utils.Assertion.xs_assert
 
 class FmiscExu(id :Int)(implicit p:Parameters) extends BasicExu{
-  val cfg = ExuConfig(
+  private val cfg = ExuConfig(
     name = "FmiscExu",
     id = id,
     blockName = "FloatingBlock",
@@ -17,19 +17,19 @@ class FmiscExu(id :Int)(implicit p:Parameters) extends BasicExu{
   )
   val issueNode = new ExuInputNode(cfg)
   val writebackNode = new ExuOutNode(cfg)
-  lazy val module = new FmiscExuImpl(this)
+  lazy val module = new FmiscExuImpl(this, cfg)
 }
-class FmiscExuImpl(outer:FmiscExu)(implicit p:Parameters) extends BasicExuImpl(outer) with XSParam{
+class FmiscExuImpl(outer:FmiscExu, exuCfg:ExuConfig)(implicit p:Parameters) extends BasicExuImpl(outer) with XSParam{
   private val issuePort = outer.issueNode.in.head._1
   private val writebackPort = outer.writebackNode.out.head._1
 
   private val f2i = Module(new FPToInt)
   private val f2f = Module(new FPToFP)
   private val fdivSqrt = Module(new FDivSqrt)
-  private val outputArbiter = Module(new Arbiter(new ExuOutput, outer.cfg.fuConfigs.length))
+  private val outputArbiter = Module(new Arbiter(new ExuOutput, exuCfg.fuConfigs.length))
 
   private val fuList = Seq(f2i, f2f, fdivSqrt)
-  private val fuReadies = outer.cfg.fuConfigs.zip(fuList).zip(outputArbiter.io.in).map({ case ((cfg, fu), arbIn) =>
+  private val fuReadies = exuCfg.fuConfigs.zip(fuList).zip(outputArbiter.io.in).map({ case ((cfg, fu), arbIn) =>
     val fuHit = issuePort.issue.bits.uop.ctrl.fuType === cfg.fuType
     fu.io.redirectIn := redirectIn
     fu.rm := issuePort.issue.bits.uop.ctrl.fpu.rm

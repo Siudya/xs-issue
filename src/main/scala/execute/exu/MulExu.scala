@@ -20,9 +20,9 @@ class MulExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicEx
   val issueNode = new ExuInputNode(cfg)
   val writebackNode = new ExuOutNode(cfg)
 
-  lazy val module = new MulExuImpl(this)
+  lazy val module = new MulExuImpl(this, cfg)
 }
-class MulExuImpl(outer:MulExu)(implicit p:Parameters) extends BasicExuImpl(outer) with XSParam{
+class MulExuImpl(outer:MulExu, exuCfg:ExuConfig)(implicit p:Parameters) extends BasicExuImpl(outer) with XSParam{
   val io = IO(new Bundle{
     val bypassIn = Input(Vec(outer.bypassInNum, Valid(new ExuOutput)))
     val bypassOut = Output(Valid(new ExuOutput))
@@ -37,13 +37,13 @@ class MulExuImpl(outer:MulExu)(implicit p:Parameters) extends BasicExuImpl(outer
   issuePort.fmaMidState.out := DontCare
   private val finalIssueSignals = bypassSigGen(io.bypassIn :+ writebackPort, issuePort, outer.bypassInNum > 0)
 
-  bku.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === FuType.bku
+  bku.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === exuCfg.fuConfigs.last.fuType
   bku.io.in.bits.uop := finalIssueSignals.bits.uop
   bku.io.in.bits.src := finalIssueSignals.bits.src
   bku.io.redirectIn := redirectIn
   bku.io.out.ready := true.B
 
-  mul.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === FuType.mul
+  mul.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === exuCfg.fuConfigs.head.fuType
   mul.io.in.bits.uop := finalIssueSignals.bits.uop
   mul.io.in.bits.src(2) := DontCare
   mul.io.redirectIn := redirectIn

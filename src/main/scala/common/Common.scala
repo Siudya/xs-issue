@@ -324,15 +324,10 @@ trait XSParam{
   val LpvLength = 4
   val loadUnitNum = 2
   val XLEN = 64
-  val intExuNum = 7
-  val memExuNum = 6
-  val floatExuNum = 6
   val VAddrBits = 39
   val AsidLength = 16
   val FtqSize = 64
-  val divNumInOneExu = 3
   val maxEntryInOneRsBank = 16
-  val duplicateGpr = true
 }
 class XSBundle extends Bundle with XSParam
 class XSModule extends Module with XSParam

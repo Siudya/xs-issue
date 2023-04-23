@@ -17,15 +17,15 @@ class FmacExu(id :Int)(implicit p:Parameters) extends BasicExu with XSParam{
   )
   val issueNode = new ExuInputNode(cfg)
   val writebackNode = new ExuOutNode(cfg)
-  lazy val module = new FmacExuImpl(this)
+  lazy val module = new FmacExuImpl(this, cfg)
 }
-class FmacExuImpl(outer:FmacExu)(implicit p:Parameters) extends BasicExuImpl(outer){
+class FmacExuImpl(outer:FmacExu, exuCfg:ExuConfig)(implicit p:Parameters) extends BasicExuImpl(outer){
   private val fmac = Module(new FMA)
   private val issuePort = outer.issueNode.in.head._1
   private val writebackPort = outer.writebackNode.out.head._1
 
   fmac.io.redirectIn := redirectIn
-  fmac.io.in.valid := issuePort.issue.valid
+  fmac.io.in.valid := issuePort.issue.valid && issuePort.issue.bits.uop.ctrl.fuType === exuCfg.fuConfigs.head.fuType
   fmac.io.in.bits.uop := issuePort.issue.bits.uop
   fmac.io.in.bits.src := issuePort.issue.bits.src
   issuePort.issue.ready := fmac.io.in.ready

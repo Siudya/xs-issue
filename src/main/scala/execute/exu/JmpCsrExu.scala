@@ -16,7 +16,7 @@ class FenceIO(implicit p: Parameters) extends XSBundle {
 }
 
 class JmpCsrExu (id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu{
-  val cfg = ExuConfig(
+  private val cfg = ExuConfig(
     name = "JmpExu",
     id = id,
     blockName = "IntegerBlock",
@@ -25,9 +25,9 @@ class JmpCsrExu (id:Int, val bypassInNum:Int)(implicit p:Parameters) extends Bas
   )
   val issueNode = new ExuInputNode(cfg)
   val writebackNode = new ExuOutNode(cfg)
-  override lazy val module = new JmpCsrExuImpl(this)
+  override lazy val module = new JmpCsrExuImpl(this, cfg)
 }
-class JmpCsrExuImpl(outer:JmpCsrExu)(implicit p:Parameters) extends BasicExuImpl(outer) with XSParam {
+class JmpCsrExuImpl(outer:JmpCsrExu, exuCfg:ExuConfig)(implicit p:Parameters) extends BasicExuImpl(outer) with XSParam {
   val io = IO(new Bundle{
     val bypassIn = Input(Vec(outer.bypassInNum, Valid(new ExuOutput)))
     val fenceio = new FenceIO
@@ -37,12 +37,12 @@ class JmpCsrExuImpl(outer:JmpCsrExu)(implicit p:Parameters) extends BasicExuImpl
   private val fence = Module(new Fence)
   private val jmp = Module(new Jump)
   private val i2f = Module(new IntToFP)
-  private val outputArbiter = Module(new Arbiter(new FuOutput(XLEN), outer.cfg.fuConfigs.length))
+  private val outputArbiter = Module(new Arbiter(new FuOutput(XLEN), exuCfg.fuConfigs.length))
 
   private val finalIssueSignals = bypassSigGen(io.bypassIn, issuePort, outer.bypassInNum > 0)
 
   private val fuList = Seq(jmp, fence, i2f)
-  private val fuReadies = outer.cfg.fuConfigs.zip(fuList).zip(outputArbiter.io.in).map({case((cfg, fu), arbIn) =>
+  private val fuReadies = exuCfg.fuConfigs.zip(fuList).zip(outputArbiter.io.in).map({case((cfg, fu), arbIn) =>
     val fuHit = finalIssueSignals.bits.uop.ctrl.fuType === cfg.fuType
     fu.io.redirectIn := redirectIn
     fu.io.in.valid := finalIssueSignals.valid & fuHit
@@ -51,7 +51,7 @@ class JmpCsrExuImpl(outer:JmpCsrExu)(implicit p:Parameters) extends BasicExuImpl
     arbIn <> fu.io.out
     fuHit && fu.io.in.ready
   })
-  private val inFuHits = outer.cfg.fuConfigs.map({cfg => finalIssueSignals.bits.uop.ctrl.fuType === cfg.fuType})
+  private val inFuHits = exuCfg.fuConfigs.map({cfg => finalIssueSignals.bits.uop.ctrl.fuType === cfg.fuType})
   xs_assert(Mux(issuePort.issue.valid, PopCount(Cat(inFuHits)) === 1.U, true.B))
   issuePort.issue.ready := Mux1H(inFuHits, fuReadies)
   issuePort.fmaMidState.out := DontCare

@@ -2,7 +2,7 @@ package exu
 import chisel3._
 import chisel3.util._
 import chipsalliance.rocketchip.config.Parameters
-import common.{ExuInput, ExuOutput, Redirect}
+import common.{ExuInput, ExuOutput, FuType, Redirect}
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import fu.FuConfigs
 import fu.alu.Alu
@@ -19,9 +19,9 @@ class AluExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicEx
   val issueNode = new ExuInputNode(cfg)
   val writebackNode = new ExuOutNode(cfg)
 
-  lazy val module = new AluExuImpl(this)
+  lazy val module = new AluExuImpl(this, cfg)
 }
-class AluExuImpl(outer:AluExu)(implicit p:Parameters) extends BasicExuImpl(outer){
+class AluExuImpl(outer:AluExu, exuCfg:ExuConfig)(implicit p:Parameters) extends BasicExuImpl(outer){
   val io = IO(new Bundle{
     val bypassIn = Input(Vec(outer.bypassInNum, Valid(new ExuOutput))) //Alu does not need bypass out for its latency is 0. Bypassing in regfile is enough.
   })
@@ -34,7 +34,7 @@ class AluExuImpl(outer:AluExu)(implicit p:Parameters) extends BasicExuImpl(outer
 
   private val alu = Module(new Alu)
   alu.io.redirectIn := redirectIn
-  alu.io.in.valid := finalIssueSignals.valid
+  alu.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === exuCfg.fuConfigs.head.fuType
   alu.io.in.bits.uop := finalIssueSignals.bits.uop
   alu.io.in.bits.src := finalIssueSignals.bits.src
   alu.io.out.ready := true.B
