@@ -13,6 +13,8 @@ import regfile.DecoupledPipeline
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 import xs.utils.Assertion.xs_assert
 
+import scala.collection.mutable
+
 class FloatingReservationStation(bankNum:Int)(implicit p: Parameters) extends LazyModule with XSParam{
   private val wbNodeParam = WriteBackSinkParam(name = "Floating RS", sinkType = WriteBackSinkType.fpRs)
   private val rsParam = RsParam(name = "Floating RS", RsType.fp, 48, bankNum)
@@ -102,6 +104,9 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
     rsBank.io.enq.bits.addrOH := fromAllocate.bits.addrOH
   }
 
+  private val fmacSelectRespQueue = new mutable.Queue[SelectResp] ++ fmacSelectNetwork.io.issueInfo
+  private val fdivSelectRespQueue = new mutable.Queue[SelectResp] ++ fdivSelectNetwork.io.issueInfo
+  private val fmiscSelectRespQueue = new mutable.Queue[SelectResp] ++ fmiscSelectNetwork.io.issueInfo
   private val issueDataTupleList = issue.zipWithIndex.map({case((bundle, cfg),idx) =>
     if(cfg.isFmac){
       fmacIssue.find(_._2 ==)
