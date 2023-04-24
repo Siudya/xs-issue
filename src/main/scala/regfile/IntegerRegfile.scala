@@ -5,6 +5,7 @@ import chisel3.util._
 import common.{ExuInput, Redirect, SrcType, XSParam}
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.config.Parameters
+import fu.fpu.FMAMidResult
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 import xs.utils.Assertion.xs_assert
 class IntegerRegFile(val entriesNum:Int, name:String)(implicit p: Parameters) extends LazyModule with XSParam{
@@ -80,23 +81,25 @@ class IntegerRegFileImpl(outer: IntegerRegFile)(implicit p: Parameters) extends 
       val realIssueOut = Wire(new ExuInput)
       realIssueOut := ImmExtractor(eo, outBundle.bits, if (eo.hasJmp) Some(io.jmpPcData) else None, if (eo.hasJmp) Some(io.jmpTargetData) else None)
 
-      val pipeline = Module(new DecoupledPipeline(eo.regfileOutNeedQueue))
-      pipeline.io.redirect := io.redirect
+      val issueValidReg = RegInit(false.B)
+      val issueDataReg = Reg(new ExuInput)
+      val permitFlow = !issueValidReg || bo.issue.fire
+      bi.issue.ready := permitFlow
+      when(permitFlow) {
+        issueValidReg := outBundle.valid
+      }
+      when(permitFlow && outBundle.valid) {
+        issueDataReg := outBundle.bits
+      }
 
-      pipeline.io.enq.issue.valid := outBundle.valid
-      pipeline.io.enq.issue.bits := realIssueOut
-      bi.issue.ready := pipeline.io.enq.issue.ready
-      pipeline.io.enq.fmaMidState.waitForAdd := bi.fmaMidState.waitForAdd
-      pipeline.io.enq.fmaMidState.in := bi.fmaMidState.in
+      bo.issue.valid := issueValidReg
+      bo.issue.bits := issueDataReg
+      bo.fmaMidState.waitForAdd := false.B
+      bo.fmaMidState.in.valid := false.B
+      bo.fmaMidState.in.bits := DontCare
 
-      bo.issue.valid := pipeline.io.deq.issue.valid
-      bo.issue.bits := pipeline.io.deq.issue.bits
-      pipeline.io.deq.issue.ready := bo.issue.ready
-      pipeline.io.deq.fmaMidState.out := DontCare
-      bo.fmaMidState.waitForAdd := pipeline.io.deq.fmaMidState.waitForAdd
-      bo.fmaMidState.in := pipeline.io.deq.fmaMidState.in
-
-      bi.fmaMidState.out := DontCare
+      bi.fmaMidState.out := bo.fmaMidState.out
+      bi.fuInFire := bo.issue.fire
     }
   }
 }

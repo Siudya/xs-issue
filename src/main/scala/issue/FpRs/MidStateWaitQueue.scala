@@ -5,14 +5,13 @@ import chisel3.util._
 import common.Redirect
 import issue.SelectResp
 
-class MidStateWaitQueue(bankIdxWidth:Int, entryIdxWidth:Int) extends Module{
+class MidStateWaitQueue(latency:Int, bankIdxWidth:Int, entryIdxWidth:Int) extends Module{
   val io = IO(new Bundle {
     val redirect = Input(Valid(new Redirect))
     val in = Input(Valid(new SelectResp(bankIdxWidth, entryIdxWidth)))
     val out = Output(Valid(new SelectResp( bankIdxWidth, entryIdxWidth)))
     val earlyWakeUp = Output(Valid(new SelectResp(bankIdxWidth, entryIdxWidth)))
   })
-  private val latency = 3
   private val validRegs = Array.fill(latency)(RegInit(false.B))
   private val dataRegs = Array.fill(latency)(Reg(new SelectResp(bankIdxWidth, entryIdxWidth)))
   private val validVec = io.in.valid +: validRegs

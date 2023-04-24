@@ -8,7 +8,6 @@ import exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, ValName}
 import freechips.rocketchip.macros.ValNameImpl
 import issue._
-import regfile.DecoupledPipeline
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 
 class IntegerReservationStation(bankNum:Int)(implicit p: Parameters) extends LazyModule with XSParam{

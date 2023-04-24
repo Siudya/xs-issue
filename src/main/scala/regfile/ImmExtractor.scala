@@ -14,6 +14,8 @@ object ImmExtractor extends XSParam {
       Mux(in.uop.ctrl.fuType === FuType.jmp, JumpImmExtractor(in, pc.get, target.get), AluImmExtractor(in))
     } else if (cfg.hasMul) {
       Mux(in.uop.ctrl.fuType === FuType.bku, BkuImmExtractor(in), AluImmExtractor(in))
+    } else if (cfg.hasDiv) {
+      AluImmExtractor(in)
     } else if (cfg.hasLoad) {
       LoadImmExtractor(in)
     } else {
