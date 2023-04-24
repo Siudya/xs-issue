@@ -9,11 +9,11 @@ import fu.mdu.{ArrayMultiplier, MDUOpType}
 import xs.utils.Assertion.xs_assert
 import xs.utils.{LookupTree, ParallelMux, SignExt, ZeroExt}
 
-class MulExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu{
+class MulExu(id:Int, complexName:String, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu{
   private val cfg  = ExuConfig(
     name = "MulExu",
     id = id,
-    blockName = "IntegerBlock",
+    complexName = complexName,
     fuConfigs = Seq(FuConfigs.mulCfg, FuConfigs.bkuCfg),
     exuType = ExuType.mul
   )
@@ -35,6 +35,7 @@ class MulExuImpl(outer:MulExu, exuCfg:ExuConfig)(implicit p:Parameters) extends 
 
   issuePort.issue.ready := true.B
   issuePort.fmaMidState.out := DontCare
+  issuePort.fuInFire := DontCare
   private val finalIssueSignals = bypassSigGen(io.bypassIn :+ writebackPort, issuePort, outer.bypassInNum > 0)
 
   bku.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === exuCfg.fuConfigs.last.fuType

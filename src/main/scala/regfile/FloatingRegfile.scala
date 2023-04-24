@@ -2,7 +2,7 @@ package regfile
 import chisel3._
 import chisel3.experimental.prefix
 import chisel3.util._
-import common.{ExuInput, FuType, Redirect, SrcType, XSParam}
+import common.{ExuInput, FuType, MicroOp, Redirect, SrcType, XSParam}
 import exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.config.Parameters
@@ -94,24 +94,31 @@ class FloatingRegFileImpl(outer: FloatingRegFile)(implicit p: Parameters) extend
       val midStateAsUInt = Wire(UInt(fmaMidResultWidth.W))
       midStateAsUInt := Cat(bi.fmaMidState.in.bits.asUInt(fmaMidResultWidth - 1, XLEN), outBundle.bits.src(0))
 
-      val pipeline = Module(new DecoupledPipeline(eo.exuType == ExuType.fmisc))
-      pipeline.io.redirect := io.redirect
+      val issueValidReg = RegInit(false.B)
+      val issueDataReg = Reg(new ExuInput)
+      val midResultValidReg = RegInit(false.B)
+      val midResultDataReg = Reg(new FMAMidResult)
+      val waitForAddReg = RegInit(false.B)
+      val permitFlow = !issueValidReg || bo.issue.fire
+      bi.issue.ready := permitFlow
+      when(permitFlow){
+        issueValidReg := outBundle.valid
+      }
+      when(permitFlow && outBundle.valid){
+        issueDataReg := outBundle.bits
+        midResultValidReg := bi.fmaMidState.in.valid
+        midResultDataReg := midStateAsUInt.asTypeOf(bo.fmaMidState.in.bits)
+        waitForAddReg := bi.fmaMidState.waitForAdd
+      }
 
-      pipeline.io.enq.issue.valid := outBundle.valid
-      pipeline.io.enq.issue.bits := outBundle.bits
-      bi.issue.ready := pipeline.io.enq.issue.ready
-      pipeline.io.enq.fmaMidState.waitForAdd := bi.fmaMidState.waitForAdd
-      pipeline.io.enq.fmaMidState.in.valid := bi.fmaMidState.in.valid
-      pipeline.io.enq.fmaMidState.in.bits := midStateAsUInt.asTypeOf(bo.fmaMidState.in.bits)
-
-      bo.issue.valid := pipeline.io.deq.issue.valid
-      bo.issue.bits := pipeline.io.deq.issue.bits
-      pipeline.io.deq.issue.ready := bo.issue.ready
-      pipeline.io.deq.fmaMidState.out := DontCare
-      bo.fmaMidState.waitForAdd := pipeline.io.deq.fmaMidState.waitForAdd
-      bo.fmaMidState.in := pipeline.io.deq.fmaMidState.in
+      bo.issue.valid := issueValidReg
+      bo.issue.bits := issueDataReg
+      bo.fmaMidState.waitForAdd := waitForAddReg
+      bo.fmaMidState.in.valid := midResultValidReg
+      bo.fmaMidState.in.bits := midResultDataReg
 
       bi.fmaMidState.out := bo.fmaMidState.out
+      bi.fuInFire := bo.issue.fire
     }
   }
 }

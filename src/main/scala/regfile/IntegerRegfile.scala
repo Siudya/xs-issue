@@ -2,14 +2,11 @@ package regfile
 import chisel3._
 import chisel3.experimental.prefix
 import chisel3.util._
-import common.{ExuInput, FuType, Redirect, SrcType, XSParam}
-import exu.ExuType
+import common.{ExuInput, Redirect, SrcType, XSParam}
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.config.Parameters
-import issue.IssueBundle
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 import xs.utils.Assertion.xs_assert
-import xs.utils.LogicShiftRight
 class IntegerRegFile(val entriesNum:Int, name:String)(implicit p: Parameters) extends LazyModule with XSParam{
   private val wbNodeParam = WriteBackSinkParam(name, WriteBackSinkType.intRf)
   val issueNode = new RegfileIssueNode
@@ -20,7 +17,7 @@ class IntegerRegFile(val entriesNum:Int, name:String)(implicit p: Parameters) ex
 class IntegerRegFileImpl(outer: IntegerRegFile)(implicit p: Parameters) extends LazyModuleImp(outer) with XSParam{
   private val issueIn = outer.issueNode.in.head._1 zip outer.issueNode.in.head._2
   private val issueOut = outer.issueNode.out
-  private val jmpNum = issueOut.map(_._2).count(_.exuType == ExuType.jmp)
+  private val jmpNum = issueOut.map(_._2).count(_.hasJmp)
   require(jmpNum <= 1, "Only one jmp module is supported!")
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
@@ -76,15 +73,14 @@ class IntegerRegFileImpl(outer: IntegerRegFile)(implicit p: Parameters) extends 
         })
 
       if (eo.srcNum < outBundle.bits.src.length) outBundle.bits.src.slice(eo.srcNum, outBundle.bits.src.length).foreach(_ := DontCare)
-      val imJmp = eo.exuType == ExuType.jmp
-      if (imJmp) {
+      if (eo.hasJmp) {
         io.jmpTargetRead := (bi.issue.bits.uop.cf.ftqPtr + 1.U).value
         io.jmpPcRead := bi.issue.bits.uop.cf.ftqPtr.value
       }
       val realIssueOut = Wire(new ExuInput)
-      realIssueOut := ImmExtractor(eo, outBundle.bits, if (imJmp) Some(io.jmpPcData) else None, if (imJmp) Some(io.jmpTargetData) else None)
+      realIssueOut := ImmExtractor(eo, outBundle.bits, if (eo.hasJmp) Some(io.jmpPcData) else None, if (eo.hasJmp) Some(io.jmpTargetData) else None)
 
-      val pipeline = Module(new DecoupledPipeline(eo.latency == Int.MaxValue))
+      val pipeline = Module(new DecoupledPipeline(eo.regfileOutNeedQueue))
       pipeline.io.redirect := io.redirect
 
       pipeline.io.enq.issue.valid := outBundle.valid

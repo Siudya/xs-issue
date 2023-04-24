@@ -15,11 +15,11 @@ class FenceIO(implicit p: Parameters) extends XSBundle {
   val sbuffer = new FenceToSbuffer
 }
 
-class JmpCsrExu (id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu{
+class JmpCsrExu (id:Int, complexName:String, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu{
   private val cfg = ExuConfig(
     name = "JmpExu",
     id = id,
-    blockName = "IntegerBlock",
+    complexName = complexName,
     fuConfigs = Seq(FuConfigs.jmpCfg, FuConfigs.fenceCfg, FuConfigs.i2fCfg),
     exuType = ExuType.jmp
   )
@@ -55,6 +55,7 @@ class JmpCsrExuImpl(outer:JmpCsrExu, exuCfg:ExuConfig)(implicit p:Parameters) ex
   xs_assert(Mux(issuePort.issue.valid, PopCount(Cat(inFuHits)) === 1.U, true.B))
   issuePort.issue.ready := Mux1H(inFuHits, fuReadies)
   issuePort.fmaMidState.out := DontCare
+  issuePort.fuInFire := DontCare
 
   writebackPort.valid := outputArbiter.io.out.valid
   writebackPort.bits.uop := outputArbiter.io.out.bits.uop

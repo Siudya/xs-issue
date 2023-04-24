@@ -10,13 +10,14 @@ import fu.mdu.DividerWrapper
 import xs.utils.Assertion.xs_assert
 import xs.utils.PickOneHigh
 
-class DivExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu with XSParam{
+class DivExu(id:Int, complexName:String, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu with XSParam{
   private val cfg = ExuConfig(
     name = "DivExu",
     id = id,
-    blockName = "IntegerBlock",
+    complexName = complexName,
     fuConfigs = Seq(FuConfigs.divCfg, FuConfigs.divCfg, FuConfigs.divCfg),
-    exuType = ExuType.div
+    exuType = ExuType.div,
+    needFuSel = true
   )
   val issueNode = new ExuInputNode(cfg)
   val writebackNode = new ExuOutNode(cfg)
@@ -37,6 +38,7 @@ class DivExuImpl(outer:DivExu, exuCfg:ExuConfig) extends BasicExuImpl(outer) wit
   private val divSel = PickOneHigh(Cat(divs.map(_.io.in.ready).reverse))
   issuePort.issue.ready := divSel.valid
   issuePort.fmaMidState.out := DontCare
+  issuePort.fuInFire := DontCare
   for(((div, en), arbIn) <- divs.zip(Mux(divSel.valid, divSel.bits, 0.U).asBools).zip(outputArbiter.io.in)){
     div.io.redirectIn := redirectIn
     div.io.in.valid := finalIssueSignals.valid & en & finalIssueSignals.bits.uop.ctrl.fuType === exuCfg.fuConfigs.head.fuType

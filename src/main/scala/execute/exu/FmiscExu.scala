@@ -2,17 +2,17 @@ package exu
 import chisel3._
 import chisel3.util._
 import chipsalliance.rocketchip.config.Parameters
-import common.{ExuOutput, XSParam}
-import fu.{FuConfigs, FuOutput}
-import fu.fpu.{FDivSqrt, FPToFP, FPToInt}
+import common.XSParam
+import fu.FuConfigs
+import fu.fpu.{FPToFP, FPToInt}
 import xs.utils.Assertion.xs_assert
 
-class FmiscExu(id :Int)(implicit p:Parameters) extends BasicExu{
+class FmiscExu(id:Int, complexName:String)(implicit p:Parameters) extends BasicExu{
   private val cfg = ExuConfig(
     name = "FmiscExu",
     id = id,
-    blockName = "FloatingBlock",
-    fuConfigs = Seq(FuConfigs.f2iCfg, FuConfigs.f2fCfg, FuConfigs.fdivSqrtCfg),
+    complexName = complexName,
+    fuConfigs = Seq(FuConfigs.f2iCfg, FuConfigs.f2fCfg),
     exuType = ExuType.fmisc
   )
   val issueNode = new ExuInputNode(cfg)
@@ -25,31 +25,34 @@ class FmiscExuImpl(outer:FmiscExu, exuCfg:ExuConfig)(implicit p:Parameters) exte
 
   private val f2i = Module(new FPToInt)
   private val f2f = Module(new FPToFP)
-  private val fdivSqrt = Module(new FDivSqrt)
-  private val outputArbiter = Module(new Arbiter(new ExuOutput, exuCfg.fuConfigs.length))
 
-  private val fuList = Seq(f2i, f2f, fdivSqrt)
-  private val fuReadies = exuCfg.fuConfigs.zip(fuList).zip(outputArbiter.io.in).map({ case ((cfg, fu), arbIn) =>
-    val fuHit = issuePort.issue.bits.uop.ctrl.fuType === cfg.fuType
+  private val fuList = Seq(f2i, f2f)
+  issuePort.issue.ready := true.B
+  issuePort.fmaMidState.out.valid := false.B
+  issuePort.fmaMidState.out.bits := DontCare
+  issuePort.fuInFire := DontCare
+  fuList.zip(exuCfg.fuConfigs).foreach({case(fu,cfg) =>
     fu.io.redirectIn := redirectIn
     fu.rm := issuePort.issue.bits.uop.ctrl.fpu.rm
-    fu.io.in.valid := issuePort.issue.valid & fuHit
+    fu.io.in.valid := issuePort.issue.valid & issuePort.issue.bits.uop.ctrl.fuType === cfg.fuType
     fu.io.in.bits.uop := issuePort.issue.bits.uop
     fu.io.in.bits.src := issuePort.issue.bits.src
-    fu.io.out.ready := arbIn.ready
-    arbIn.valid := fu.io.out.valid
-    arbIn.bits.uop := fu.io.out.bits.uop
-    arbIn.bits.data := fu.io.out.bits.data
-    arbIn.bits.fflags := fu.fflags
-    arbIn.bits.redirect := DontCare
-    arbIn.bits.redirectValid := false.B
-    fuHit && fu.io.in.ready
+    fu.io.out.ready := true.B
   })
-  outputArbiter.io.out.ready := true.B
-  private val inFuHits = outer.cfg.fuConfigs.map({ cfg => issuePort.issue.bits.uop.ctrl.fuType === cfg.fuType })
-  xs_assert(Mux(issuePort.issue.valid, PopCount(Cat(inFuHits)) === 1.U, true.B))
-  issuePort.issue.ready := Mux1H(inFuHits, fuReadies)
 
-  writebackPort.valid := outputArbiter.io.out.valid
-  writebackPort.bits := outputArbiter.io.out.bits
+  xs_assert(Mux(issuePort.issue.valid, exuCfg.fuConfigs.map(_.fuType === issuePort.issue.bits.uop.ctrl.fuType).reduce(_|_), true.B))
+  //This module should never be blocked.
+  xs_assert(Mux(f2i.io.in.valid, f2i.io.in.ready, true.B))
+  xs_assert(Mux(f2f.io.in.valid, f2f.io.in.ready, true.B))
+
+  private val valids = fuList.map(_.io.out.valid)
+  private val uops = fuList.map(_.io.out.bits.uop)
+  private val data = fuList.map(_.io.out.bits.data)
+  private val fflags = fuList.map(_.fflags)
+  writebackPort.valid := valids.reduce(_|_)
+  writebackPort.bits.uop := Mux1H(valids, uops)
+  writebackPort.bits.data := Mux1H(valids, data)
+  writebackPort.bits.fflags := Mux1H(valids, fflags)
+  writebackPort.bits.redirect := DontCare
+  writebackPort.bits.redirectValid := false.B
 }

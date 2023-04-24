@@ -57,4 +57,5 @@ case class DispatchParam
 class IssueBundle extends XSBundle {
   val issue = DecoupledIO(new ExuInput)
   val fmaMidState = Flipped(new FMAMidResultIO)
+  val fuInFire = Input(Bool())
 }

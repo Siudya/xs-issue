@@ -2,22 +2,19 @@ package regfile
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
-import chisel3.util._
 import common._
-import exu.{ExuConfig, ExuType}
-import issue.RsParam
+import execute.exucx.ExuComplexParam
+import exu.ExuType
 import xs.utils.SignExt
 
 object ImmExtractor extends XSParam {
-  def apply(cfg: ExuConfig, in: ExuInput, pc: Option[UInt], target: Option[UInt])
+  def apply(cfg: ExuComplexParam, in: ExuInput, pc: Option[UInt], target: Option[UInt])
            (implicit p: Parameters): ExuInput = {
-    if (cfg.exuType == ExuType.jmp) {
-      JumpImmExtractor(in, pc.get, target.get)
-    } else if (cfg.exuType == ExuType.alu) {
-      AluImmExtractor(in)
-    } else if (cfg.exuType == ExuType.mul) {
-      BkuImmExtractor(in)
-    } else if (cfg.exuType == ExuType.load) {
+    if (cfg.hasJmp) {
+      Mux(in.uop.ctrl.fuType === FuType.jmp, JumpImmExtractor(in, pc.get, target.get), AluImmExtractor(in))
+    } else if (cfg.hasMul) {
+      Mux(in.uop.ctrl.fuType === FuType.bku, BkuImmExtractor(in), AluImmExtractor(in))
+    } else if (cfg.hasLoad) {
       LoadImmExtractor(in)
     } else {
       in

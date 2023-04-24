@@ -8,11 +8,11 @@ import fu.FuConfigs
 import fu.alu.Alu
 import xs.utils.Assertion.xs_assert
 
-class AluExu(id:Int, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu{
+class AluExu(id:Int, complexName:String, val bypassInNum:Int)(implicit p:Parameters) extends BasicExu{
   private val cfg  = ExuConfig(
     name = "AluExu",
     id = id,
-    blockName = "IntegerBlock",
+    complexName = complexName,
     fuConfigs = Seq(FuConfigs.aluCfg),
     exuType = ExuType.alu
   )
@@ -29,6 +29,7 @@ class AluExuImpl(outer:AluExu, exuCfg:ExuConfig)(implicit p:Parameters) extends 
   private val writebackPort = outer.writebackNode.out.head._1
 
   issuePort.issue.ready := true.B
+  issuePort.fuInFire := DontCare
   issuePort.fmaMidState.out := DontCare
   private val finalIssueSignals = bypassSigGen(io.bypassIn, issuePort, outer.bypassInNum > 0)
 

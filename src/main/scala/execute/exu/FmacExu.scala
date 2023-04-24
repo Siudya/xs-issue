@@ -6,11 +6,11 @@ import common.XSParam
 import fu.FuConfigs
 import fu.fpu.FMA
 
-class FmacExu(id :Int)(implicit p:Parameters) extends BasicExu with XSParam{
+class FmacExu(id:Int, complexName:String)(implicit p:Parameters) extends BasicExu with XSParam{
   private val cfg = ExuConfig(
     name = "FmacExu",
     id = id,
-    blockName = "FloatingBlock",
+    complexName = complexName,
     fuConfigs = Seq(FuConfigs.fmacCfg),
     exuType = ExuType.fmac,
     speculativeWakeup = true
@@ -31,6 +31,7 @@ class FmacExuImpl(outer:FmacExu, exuCfg:ExuConfig)(implicit p:Parameters) extend
   issuePort.issue.ready := fmac.io.in.ready
   fmac.rm := issuePort.issue.bits.uop.ctrl.fpu.rm
   fmac.midResult <> issuePort.fmaMidState
+  issuePort.fuInFire := DontCare
 
   writebackPort.valid := fmac.io.out.valid
   fmac.io.out.ready := true.B

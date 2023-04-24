@@ -12,6 +12,7 @@ object ExuType{
   def std = 6
   def fmisc = 7
   def fmac = 8
+  def fdiv = 9
 
   private val mapping = Map(
     jmp -> "jmp",
@@ -22,26 +23,24 @@ object ExuType{
     sta -> "sta",
     std -> "std",
     fmisc -> "fmisc",
-    fmac -> "fmac"
+    fmac -> "fmac",
+    fdiv -> "fdiv"
   )
 
   def intTypes: Seq[Int] = Seq(jmp, alu, mul, div)
   def memTypes: Seq[Int] = Seq(load, sta, std)
-  def fpTypes: Seq[Int] = Seq(fmisc, fmac)
-  def primaryGprTypes: Seq[Int] = Seq(jmp, alu, mul)
-  def secondaryGprTypes: Seq[Int] = Seq(div, load, sta, std)
-  def gprTypes: Seq[Int] = intTypes ++ memTypes
-  def fprTypes: Seq[Int] = Seq(fmisc, fmac, std)
+  def fpTypes: Seq[Int] = Seq(fmisc, fmac, fdiv)
   def typeToString(in:Int):String = mapping(in)
 }
 
 case class ExuConfig
 (
   name: String,
-  id: Int,
-  blockName: String, // NOTE: for perf counter
+  id:Int,
+  complexName: String,
   fuConfigs: Seq[FuConfig],
   exuType:Int,
+  needFuSel:Boolean = false,
   speculativeWakeup:Boolean = false
 ){
   val srcNum:Int = fuConfigs.map(_.srcCnt).max
@@ -59,6 +58,6 @@ case class ExuConfig
   val isMemType = ExuType.memTypes.contains(exuType)
   val isFpType = ExuType.fpTypes.contains(exuType)
 
-  override def toString = s"${name} #${id} belongs to ${blockName}: srcNum: ${srcNum} Type: ${ExuType.typeToString(exuType)} " +
-    s"\n\tFunction Units: " + fuConfigs.toString()
+  override def toString = s"\n\t${name}: srcNum: ${srcNum} Type: ${ExuType.typeToString(exuType)} " +
+    "\n\t\t Functions Units: " + fuConfigs.map(_.toString + " ").reduce(_++_)
 }
