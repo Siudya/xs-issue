@@ -1,4 +1,4 @@
-package fu.bku
+package execute.fu.bku
 import chisel3._
 import chisel3.util._
 object BKUOpType {

@@ -1,4 +1,4 @@
-package fu.fence
+package execute.fu.fence
 import chisel3._
 object FenceOpType {
   def fence: UInt = "b10000".U

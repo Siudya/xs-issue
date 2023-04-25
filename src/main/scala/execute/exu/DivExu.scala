@@ -1,12 +1,12 @@
-package exu
+package execute.exu
 import chisel3._
 import chisel3.util._
 import chipsalliance.rocketchip.config.Parameters
 import common.{ExuInput, ExuOutput, FuType, Redirect, XSParam}
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
-import fu.{FuConfigs, FuOutput}
-import fu.alu.Alu
-import fu.mdu.DividerWrapper
+import execute.fu.{FuConfigs, FuOutput}
+import execute.fu.alu.Alu
+import execute.fu.mdu.DividerWrapper
 import xs.utils.Assertion.xs_assert
 import xs.utils.PickOneHigh
 
@@ -17,7 +17,7 @@ class DivExu(id:Int, complexName:String, val bypassInNum:Int)(implicit p:Paramet
     complexName = complexName,
     fuConfigs = Seq(FuConfigs.divCfg, FuConfigs.divCfg, FuConfigs.divCfg),
     exuType = ExuType.div,
-    needFuSel = true
+    needToken = true
   )
   val issueNode = new ExuInputNode(cfg)
   val writebackNode = new ExuOutNode(cfg)

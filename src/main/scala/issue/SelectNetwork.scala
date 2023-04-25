@@ -37,7 +37,7 @@ class SelectInfo extends XSBundle{
   val midResultReadEn = Bool()
 }
 
-class SelectResp(bankIdxWidth:Int, entryIdxWidth:Int) extends XSBundle {
+class SelectResp(val bankIdxWidth:Int, entryIdxWidth:Int) extends XSBundle {
   val info = new SelectInfo
   val entryIdxOH = UInt(entryIdxWidth.W)
   val bankIdxOH = UInt(bankIdxWidth.W)
@@ -124,7 +124,8 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
     val selectInfo = Input(Vec(bankNum,Vec(entryNum, Valid(new SelectInfo))))
-    val issueInfo = Output(Vec(issueNum, Valid(new SelectResp(bankNum, entryNum))))
+    val issueInfo = Vec(issueNum, Decoupled(new SelectResp(bankNum, entryNum)))
+    val tokenRelease = if(cfg.needToken)Some(Input(Vec(issueNum,Valid(UInt(MaxRegfileIdxWidth.W))))) else None
   })
   override val desiredName:String = name.getOrElse("SelectNetwork")
 
@@ -152,12 +153,28 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name
     })
   }
 
-  for((outPort,driver) <- io.issueInfo.zip(selectorSeq)){
-    val shouldBeSuppressed = driver.io.out.bits.info.robPtr.needFlush(io.redirect)
-    outPort.valid := driver.io.out.valid && !shouldBeSuppressed
-    outPort.bits.bankIdxOH := driver.io.out.bits.bankIdxOH
-    outPort.bits.entryIdxOH := driver.io.out.bits.entryIdxOH
-    outPort.bits.info := driver.io.out.bits.info
+  if(cfg.needToken){
+    val tokenAllocators = Seq.fill(issueNum)(Module(new TokenAllocator(MaxRegfileIdxWidth, cfg.fuConfigs.length)))
+    for ((((outPort, driver), ta), tr) <- io.issueInfo.zip(selectorSeq).zip(tokenAllocators).zip(io.tokenRelease.get)) {
+      ta.io.redirect := io.redirect
+      ta.io.alloc.valid := outPort.fire
+      ta.io.alloc.bits.pdest := driver.io.out.bits.info.pdest
+      ta.io.alloc.bits.robPtr := driver.io.out.bits.info.robPtr
+      ta.io.release := tr
+      val shouldBeSuppressed = driver.io.out.bits.info.robPtr.needFlush(io.redirect)
+      outPort.valid := driver.io.out.valid && !shouldBeSuppressed && ta.io.allow
+      outPort.bits.bankIdxOH := driver.io.out.bits.bankIdxOH
+      outPort.bits.entryIdxOH := driver.io.out.bits.entryIdxOH
+      outPort.bits.info := driver.io.out.bits.info
+    }
+  } else {
+    for ((outPort, driver) <- io.issueInfo.zip(selectorSeq)) {
+      val shouldBeSuppressed = driver.io.out.bits.info.robPtr.needFlush(io.redirect)
+      outPort.valid := driver.io.out.valid && !shouldBeSuppressed
+      outPort.bits.bankIdxOH := driver.io.out.bits.bankIdxOH
+      outPort.bits.entryIdxOH := driver.io.out.bits.entryIdxOH
+      outPort.bits.info := driver.io.out.bits.info
+    }
   }
 
   private val flatInputInfoVec = VecInit(io.selectInfo.map(_.reverse).reverse.reduce(_++_))

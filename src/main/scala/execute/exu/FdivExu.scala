@@ -4,9 +4,9 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import common.{ExuOutput, XSParam}
-import exu.{BasicExu, BasicExuImpl, ExuConfig, ExuInputNode, ExuOutNode, ExuType}
-import fu.FuConfigs
-import fu.fpu.FDivSqrt
+import execute.exu.{BasicExu, BasicExuImpl, ExuConfig, ExuInputNode, ExuOutNode, ExuType}
+import execute.fu.FuConfigs
+import execute.fu.fpu.FDivSqrt
 import xs.utils.Assertion.xs_assert
 import xs.utils.PickOneHigh
 
@@ -17,7 +17,7 @@ class FdivExu(id:Int, complexName:String)(implicit p:Parameters) extends BasicEx
     complexName = complexName,
     fuConfigs = Seq(FuConfigs.fdivSqrtCfg, FuConfigs.fdivSqrtCfg, FuConfigs.fdivSqrtCfg),
     exuType = ExuType.fdiv,
-    needFuSel = true
+    needToken = true
   )
   val issueNode = new ExuInputNode(cfg)
   val writebackNode = new ExuOutNode(cfg)
@@ -27,7 +27,7 @@ class FdivExuImpl(outer:FdivExu, exuCfg:ExuConfig)(implicit p:Parameters) extend
   private val issuePort = outer.issueNode.in.head._1
   private val writebackPort = outer.writebackNode.out.head._1
 
-  private val fdivSqrts = Seq.fill(exuCfg.fuConfigs.length)(new FDivSqrt)
+  private val fdivSqrts = Seq.fill(exuCfg.fuConfigs.length)(Module(new FDivSqrt))
   private val outputArbiter = Module(new Arbiter(new ExuOutput, exuCfg.fuConfigs.length))
 
   private val fuSel = PickOneHigh(Cat(fdivSqrts.map(_.io.in.ready).reverse))
@@ -36,7 +36,7 @@ class FdivExuImpl(outer:FdivExu, exuCfg:ExuConfig)(implicit p:Parameters) extend
   issuePort.fuInFire := DontCare
   fdivSqrts.zipWithIndex.zip(outputArbiter.io.in).foreach({case((fu,idx), arbIn) =>
     fu.io.redirectIn := redirectIn
-    fu.io.in.valid := issuePort.issue.valid & fuSel.bits(idx)
+    fu.io.in.valid := issuePort.issue.valid & fuSel.bits(idx) & issuePort.issue.bits.uop.ctrl.fuType === exuCfg.fuConfigs.head.fuType
     fu.io.in.bits.uop := issuePort.issue.bits.uop
     fu.io.in.bits.src := issuePort.issue.bits.src
     fu.rm := issuePort.issue.bits.uop.ctrl.fpu.rm

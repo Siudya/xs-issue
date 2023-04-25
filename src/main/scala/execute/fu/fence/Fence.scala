@@ -14,14 +14,14 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package fu.fence
+package execute.fu.fence
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import common.ExceptionNO.illegalInstr
 import common.XSBundle
-import fu.FunctionUnit
+import execute.fu.FunctionUnit
 import xs.utils.Assertion.xs_assert
 
 class FenceToSbuffer extends Bundle {

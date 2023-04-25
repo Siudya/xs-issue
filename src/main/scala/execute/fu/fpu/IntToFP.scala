@@ -17,13 +17,13 @@
 // See LICENSE.Berkeley for license details.
 // See LICENSE.SiFive for license details.
 
-package fu.fpu
+package execute.fu.fpu
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import fu.FuConfigs.i2fCfg
-import fu.HasPipelineReg
+import execute.fu.FuConfigs.i2fCfg
+import execute.fu.HasPipelineReg
 import xs.utils.{SignExt, ZeroExt}
 
 class IntToFPDataModule(latency: Int)(implicit p: Parameters) extends FPUDataModule {

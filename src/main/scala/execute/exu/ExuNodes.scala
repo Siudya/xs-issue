@@ -1,4 +1,4 @@
-package exu
+package execute.exu
 import chipsalliance.rocketchip.config
 import chisel3._
 import chisel3.internal.sourceinfo.SourceInfo

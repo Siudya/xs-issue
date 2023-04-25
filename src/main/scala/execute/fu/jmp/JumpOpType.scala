@@ -1,4 +1,4 @@
-package fu.jmp
+package execute.fu.jmp
 import chisel3._
 object JumpOpType {
   def jal: UInt = "b00".U

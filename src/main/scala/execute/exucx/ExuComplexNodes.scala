@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.internal.sourceinfo.SourceInfo
 import chisel3.util._
 import common.{ExuInput, ExuOutput}
-import exu.{ExuConfig, ExuOutwardImpl, ExuType}
+import execute.exu.{ExuConfig, ExuOutwardImpl, ExuType}
 import freechips.rocketchip.diplomacy._
 import issue.{IssueBundle, RsParam}
 
@@ -35,6 +35,8 @@ case class ExuComplexParam
   val isFmac:Boolean = hasFmac && !hasFdiv && !hasFmisc
   val isFmaDiv:Boolean = hasFmac && hasFdiv
   val isFmaMisc:Boolean = hasFmac && hasFmisc
+
+  val needToken:Boolean = exuConfigs.map(_.needToken).reduce(_||_)
 
   override def toString:String = s"${name}: " + exuConfigs.map(_.toString).reduce(_++_)
 }

@@ -1,4 +1,4 @@
-package exu
+package execute.exu
 import chisel3.util._
 import chisel3._
 import chipsalliance.rocketchip.config.Parameters

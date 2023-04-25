@@ -2,7 +2,7 @@ package issue
 import chisel3._
 import chisel3.util._
 import common._
-import fu.fpu.{FMAMidResult, FMAMidResultIO}
+import execute.fu.fpu.{FMAMidResult, FMAMidResultIO}
 
 abstract class BasicStatusArrayEntry(val srcNum:Int, isIntSrc:Boolean) extends XSBundle{
   val psrc = Vec(srcNum, UInt(if(isIntSrc)GprIdxWidth.W else FprIdxWidth.W))

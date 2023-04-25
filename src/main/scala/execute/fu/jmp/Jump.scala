@@ -14,13 +14,13 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package fu.jmp
+package execute.fu.jmp
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import common.{FuOpType, ImmUnion, RedirectLevel, XSModule}
-import fu.FUWithRedirect
+import execute.fu.FUWithRedirect
 import xs.utils.{ParallelMux, SignExt}
 
 class JumpDataModule(implicit p: Parameters) extends XSModule {

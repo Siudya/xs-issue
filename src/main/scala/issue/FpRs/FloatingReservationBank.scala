@@ -3,7 +3,7 @@ import issue._
 import chisel3._
 import chisel3.util._
 import common.{MicroOp, Redirect, XSModule}
-import fu.fpu.FMAMidResult
+import execute.fu.fpu.FMAMidResult
 import issue.{EarlyWakeUpInfo, WakeUpInfo}
 
 class FloatingReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends XSModule{

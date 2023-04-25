@@ -18,12 +18,12 @@
 // https://github.com/OpenXiangShan/XS-Verilog-Library/tree/main/int_div_radix_4_v1
 // Email of original author: hyf_sysu@qq.com
 
-package fu.mdu
+package execute.fu.mdu
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import fu.FunctionUnit
+import execute.fu.FunctionUnit
 import xs.utils._
 
 class SRT16DividerDataModule(len: Int) extends Module {

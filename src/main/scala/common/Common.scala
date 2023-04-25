@@ -3,8 +3,8 @@ package common
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import exu.ExuConfig
-import fu.{FuConfig, FuInput}
+import execute.exu.ExuConfig
+import execute.fu.{FuConfig, FuInput}
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, SignExt, ZeroExt}
 
 class FtqPtr extends CircularQueuePtr[FtqPtr](64)

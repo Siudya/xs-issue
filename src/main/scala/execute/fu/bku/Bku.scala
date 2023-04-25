@@ -14,13 +14,13 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package fu.bku
+package execute.fu.bku
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import common.XSModule
-import fu.{FunctionUnit, HasPipelineReg}
+import execute.fu.{FunctionUnit, HasPipelineReg}
 import xs.utils._
 
 class CountModule(implicit p: Parameters) extends XSModule {

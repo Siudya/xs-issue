@@ -17,12 +17,12 @@
 // See LICENSE.Berkeley for license details.
 // See LICENSE.SiFive for license details.
 
-package fu.fpu
+package execute.fu.fpu
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import fu.FuConfigs.f2iCfg
+import execute.fu.FuConfigs.f2iCfg
 import xs.utils.SignExt
 import fudian._
 

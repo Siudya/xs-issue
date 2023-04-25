@@ -1,4 +1,4 @@
-package fu.alu
+package execute.fu.alu
 import chisel3._
 import chisel3.util._
 

@@ -14,13 +14,13 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package fu.alu
+package execute.fu.alu
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import common.{FuOpType, RedirectLevel, XSModule}
-import fu.FUWithRedirect
+import execute.fu.FUWithRedirect
 import xs.utils.{LookupTree, SignExt, ZeroExt}
 
 class AddModule(implicit p: Parameters) extends XSModule {

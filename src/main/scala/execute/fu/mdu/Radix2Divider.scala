@@ -14,12 +14,12 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package fu.mdu
+package execute.fu.mdu
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import fu.FunctionUnit
+import execute.fu.FunctionUnit
 import xs.utils.SignExt
 
 abstract class AbstractDivider(len: Int)(implicit p: Parameters) extends FunctionUnit(len){

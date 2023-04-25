@@ -1,11 +1,11 @@
-package exu
+package execute.exu
 import chisel3._
 import chisel3.util._
 import chipsalliance.rocketchip.config.Parameters
 import common.{ExuOutput, FuType, XSParam}
-import fu.{FuConfigs, FuOutput}
-import fu.bku.Bku
-import fu.mdu.{ArrayMultiplier, MDUOpType}
+import execute.fu.{FuConfigs, FuOutput}
+import execute.fu.bku.Bku
+import execute.fu.mdu.{ArrayMultiplier, MDUOpType}
 import xs.utils.Assertion.xs_assert
 import xs.utils.{LookupTree, ParallelMux, SignExt, ZeroExt}
 
@@ -97,4 +97,7 @@ class MulExuImpl(outer:MulExu, exuCfg:ExuConfig)(implicit p:Parameters) extends 
   writebackPort.bits.uop := finalData.bits.uop
   writebackPort.bits.data := finalData.bits.data
   io.bypassOut := writebackPort
+
+  xs_assert(mul.io.in.ready)
+  xs_assert(bku.io.in.ready)
 }

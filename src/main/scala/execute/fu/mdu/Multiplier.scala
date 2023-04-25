@@ -14,12 +14,12 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package fu.mdu
+package execute.fu.mdu
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import fu.{FunctionUnit, HasPipelineReg}
+import execute.fu.{FunctionUnit, HasPipelineReg}
 import xs.utils.SignExt
 
 class MulDivCtrl extends Bundle{

@@ -1,10 +1,10 @@
-package exu
+package execute.exu
 import chisel3._
 import chisel3.util._
 import chipsalliance.rocketchip.config.Parameters
 import common.XSParam
-import fu.FuConfigs
-import fu.fpu.{FPToFP, FPToInt}
+import execute.fu.FuConfigs
+import execute.fu.fpu.{FPToFP, FPToInt}
 import xs.utils.Assertion.xs_assert
 
 class FmiscExu(id:Int, complexName:String)(implicit p:Parameters) extends BasicExu{

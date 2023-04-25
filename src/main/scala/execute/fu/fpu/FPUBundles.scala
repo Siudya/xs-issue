@@ -1,4 +1,4 @@
-package fu.fpu
+package execute.fu.fpu
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import common.XSBundle

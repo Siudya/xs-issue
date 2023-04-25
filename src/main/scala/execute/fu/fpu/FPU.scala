@@ -1,4 +1,4 @@
-package fu.fpu
+package execute.fu.fpu
 
 import chisel3._
 import chisel3.util._

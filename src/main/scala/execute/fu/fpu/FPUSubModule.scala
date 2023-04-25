@@ -14,13 +14,13 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-package fu.fpu
+package execute.fu.fpu
 
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import common.XSModule
-import fu.{FunctionUnit, HasPipelineReg}
+import execute.fu.{FunctionUnit, HasPipelineReg}
 
 trait HasUIntToSIntHelper {
   implicit class UIntToSIntHelper(x: UInt){

@@ -1,5 +1,5 @@
-package exu
-import fu.FuConfig
+package execute.exu
+import execute.fu.FuConfig
 import chisel3._
 
 object ExuType{
@@ -13,6 +13,7 @@ object ExuType{
   def fmisc = 7
   def fmac = 8
   def fdiv = 9
+  def i2f = 10
 
   private val mapping = Map(
     jmp -> "jmp",
@@ -24,10 +25,11 @@ object ExuType{
     std -> "std",
     fmisc -> "fmisc",
     fmac -> "fmac",
-    fdiv -> "fdiv"
+    fdiv -> "fdiv",
+    i2f -> "i2f"
   )
 
-  def intTypes: Seq[Int] = Seq(jmp, alu, mul, div)
+  def intTypes: Seq[Int] = Seq(jmp, alu, mul, div, i2f)
   def memTypes: Seq[Int] = Seq(load, sta, std)
   def fpTypes: Seq[Int] = Seq(fmisc, fmac, fdiv)
   def typeToString(in:Int):String = mapping(in)
@@ -40,7 +42,7 @@ case class ExuConfig
   complexName: String,
   fuConfigs: Seq[FuConfig],
   exuType:Int,
-  needFuSel:Boolean = false,
+  needToken:Boolean = false,
   speculativeWakeup:Boolean = false
 ){
   val srcNum:Int = fuConfigs.map(_.srcCnt).max

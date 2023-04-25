@@ -1,4 +1,4 @@
-package fu.mdu
+package execute.fu.mdu
 import chisel3._
 import chisel3.util._
 object MDUOpType {

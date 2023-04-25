@@ -3,7 +3,7 @@ package issue.FpRs
 import chisel3._
 import chisel3.util._
 import common.{ExuInput, MicroOp, Redirect}
-import fu.fpu.FMAMidResult
+import execute.fu.fpu.FMAMidResult
 import issue.IssueBundle
 import xs.utils.Assertion.xs_assert
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}

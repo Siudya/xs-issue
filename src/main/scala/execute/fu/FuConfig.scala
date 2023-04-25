@@ -1,4 +1,4 @@
-package fu
+package execute.fu
 import chisel3._
 import common.ExceptionNO._
 import common.{FuType, MicroOp}
