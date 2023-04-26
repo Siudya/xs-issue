@@ -11,7 +11,7 @@ class FmacComplex(id: Int)(implicit p:Parameters) extends BasicExuComplex{
   val fmac = LazyModule(new FmacExu(id,"FmacComplex"))
   fmac.issueNode :*= issueNode
   writebackNode :=* fmac.writebackNode
-  lazy val module = new BasicExuComplexImp(this){
+  lazy val module = new BasicExuComplexImp(this, 0){
     require(issueNode.in.length == 1)
     require(issueNode.out.length == 1)
     private val issueIn = issueNode.in.head._1

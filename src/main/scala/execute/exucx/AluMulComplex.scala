@@ -16,11 +16,10 @@ class AluMulComplex(id: Int, bypassNum:Int)(implicit p:Parameters) extends Basic
   writebackNode :=* alu.writebackNode
   writebackNode :=* mul.writebackNode
 
-  lazy val module = new BasicExuComplexImp(this){
+  lazy val module = new BasicExuComplexImp(this, bypassNum){
     require(issueNode.in.length == 1)
     require(issueNode.out.length == 2)
     val io = IO(new Bundle{
-      val bypassIn = Input(Vec(bypassNum, Valid(new ExuOutput)))
       val bypassOut = Output(Valid(new ExuOutput))
     })
     private val issueIn = issueNode.in.head._1
@@ -28,11 +27,11 @@ class AluMulComplex(id: Int, bypassNum:Int)(implicit p:Parameters) extends Basic
     private val issueMul = issueNode.out.filter(_._2.exuType == ExuType.mul).head._1
 
     issueAlu <> issueIn
-    alu.module.io.bypassIn.take(bypassNum).zip(io.bypassIn).foreach({case(a, b) => a := b})
+    alu.module.io.bypassIn.take(bypassNum).zip(bypassIn).foreach({case(a, b) => a := b})
     alu.module.redirectIn := redirectIn
 
     issueMul <> issueIn
-    mul.module.io.bypassIn := io.bypassIn
+    mul.module.io.bypassIn := bypassIn
     mul.module.redirectIn := redirectIn
 
     alu.module.io.bypassIn.last := mul.module.io.bypassOut

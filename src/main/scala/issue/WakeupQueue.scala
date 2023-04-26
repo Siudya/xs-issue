@@ -8,6 +8,7 @@ class WakeupQueue(latency:Int) extends Module{
     val in = Input(Valid(new WakeUpInfo))
     val out = Output(Valid(new WakeUpInfo))
   })
+  require(latency > 0)
   private def DelayInput(in:Valid[WakeUpInfo], l:Int): Valid[WakeUpInfo] = {
     val res = Wire(Valid(new WakeUpInfo))
     val realIn = if(l == 1) in else DelayInput(in, l - 1)
@@ -17,9 +18,26 @@ class WakeupQueue(latency:Int) extends Module{
     res
   }
 
-  if(latency == 0){
-    io.out := io.in
-  } else {
-    io.out := DelayInput(io.in, latency)
+  io.out := DelayInput(io.in, latency)
+}
+
+object WakeupQueue {
+  def apply(in:DecoupledIO[SelectResp], latency:Int, redirect:Valid[Redirect]):Valid[WakeUpInfo] = {
+    val res = Wire(Valid(new WakeUpInfo))
+    if(latency > 0) {
+      val wakeupQueue = Module(new WakeupQueue(latency))
+      wakeupQueue.io.in.valid := in.fire
+      wakeupQueue.io.in.bits.lpv := in.bits.info.lpv
+      wakeupQueue.io.in.bits.robPtr := in.bits.info.robPtr
+      wakeupQueue.io.in.bits.pdest := in.bits.info.pdest
+      wakeupQueue.io.redirect := redirect
+      res := wakeupQueue.io.out
+    } else {
+      res.valid := in.fire
+      res.bits.lpv := in.bits.info.lpv
+      res.bits.robPtr := in.bits.info.robPtr
+      res.bits.pdest := in.bits.info.pdest
+    }
+    res
   }
 }

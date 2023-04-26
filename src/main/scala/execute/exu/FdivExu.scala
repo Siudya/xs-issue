@@ -4,7 +4,6 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
 import common.{ExuOutput, XSParam}
-import execute.exu.{BasicExu, BasicExuImpl, ExuConfig, ExuInputNode, ExuOutNode, ExuType}
 import execute.fu.FuConfigs
 import execute.fu.fpu.FDivSqrt
 import xs.utils.Assertion.xs_assert

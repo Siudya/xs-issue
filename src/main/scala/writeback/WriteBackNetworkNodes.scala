@@ -5,7 +5,7 @@ import chisel3._
 import chisel3.internal.sourceinfo.SourceInfo
 import chisel3.util._
 import common.{ExuInput, ExuOutput, MicroOp}
-import exu.ExuConfig
+import execute.exu.ExuConfig
 import issue.IssueBundle
 
 object WriteBackSinkType{

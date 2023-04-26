@@ -6,17 +6,16 @@ import chisel3.util._
 import common.{MicroOp, Redirect, XSParam}
 import execute.exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, ValName}
-import freechips.rocketchip.macros.ValNameImpl
 import execute.fu.fpu.FMAMidResult
 import issue.FpRs.{DecoupledPipeline, FloatingReservationBank, MidStateWaitQueue}
 import issue._
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 
-import scala.collection.mutable
 
-class IntegerReservationStation(bankNum:Int)(implicit p: Parameters) extends LazyModule with XSParam{
+class IntegerReservationStation(bankNum:Int, entryNum:Int)(implicit p: Parameters) extends LazyModule with XSParam{
+  require(entryNum % bankNum == 0)
   private val wbNodeParam = WriteBackSinkParam(name = "Integer RS", sinkType = WriteBackSinkType.intRs)
-  private val rsParam = RsParam(name = "Integer RS", RsType.int, 48, bankNum)
+  private val rsParam = RsParam(name = "Integer RS", RsType.int, entryNum, bankNum)
   val issueNode = new RsIssueNode(rsParam)
   val wakeupNode = new WriteBackSinkNode(wbNodeParam)
 
@@ -31,28 +30,43 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
   outer.issueNode.out.head._2.foreach(cfg => println(cfg))
   private val wbIn = outer.wakeupNode.in.head
   private val wakeup = wbIn._1.zip(wbIn._2)
-  issue.foreach(elm => elm._2.exuConfigs.foreach(elm0 => require(ExuType.fpTypes.contains(elm0.exuType))))
+  issue.foreach(elm => elm._2.exuConfigs.foreach(elm0 => require(ExuType.intTypes.contains(elm0.exuType))))
 
-  private val fmacIssue = issue.filter(_._2.hasFmac)
-  private val fdivIssue = issue.filter(_._2.hasFdiv)
-  private val fmiscIssue = issue.filter(_._2.hasFmisc)
+  private val aluIssue = issue.filter(_._2.hasAlu)
+  private val mulIssue = issue.filter(_._2.hasMul)
+  private val i2fIssue = issue.filter(_._2.hasI2f)
+  private val divIssue = issue.filter(_._2.hasDiv)
+  private val jmpIssue = issue.filter(_._2.hasJmp)
 
-  require(fmacIssue.nonEmpty && fmacIssue.length <= param.bankNum && (param.bankNum % fmacIssue.length) == 0)
-  require(fdivIssue.nonEmpty && fdivIssue.length <= param.bankNum && (param.bankNum % fdivIssue.length) == 0)
-  require(fmiscIssue.nonEmpty && fmiscIssue.length <= param.bankNum && (param.bankNum % fmiscIssue.length) == 0)
+  private val aluIssuePortNum = issue.count(_._2.hasAlu)
+  private val mulIssuePortNum = issue.count(_._2.hasMul)
+  private val i2fIssuePortNum = issue.count(_._2.hasI2f)
+  private val divIssuePortNum = issue.count(_._2.hasDiv)
+  private val jmpIssuePortNum = issue.count(_._2.hasJmp)
+
+  require(aluIssue.nonEmpty && aluIssue.length <= param.bankNum && (param.bankNum % aluIssue.length) == 0)
+  require(mulIssue.nonEmpty && mulIssue.length <= param.bankNum && (param.bankNum % mulIssue.length) == 0)
+  require(i2fIssue.nonEmpty && i2fIssue.length <= param.bankNum && (param.bankNum % i2fIssue.length) == 0)
+  require(divIssue.nonEmpty && divIssue.length <= param.bankNum && (param.bankNum % divIssue.length) == 0)
+  require(jmpIssue.nonEmpty && jmpIssue.length <= param.bankNum && (param.bankNum % jmpIssue.length) == 0)
 
   private val issueWidth = issue.length
   private val entriesNumPerBank = param.entriesNum / param.bankNum
 
-  val io = IO(new Bundle {
+  val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
     val enq = Vec(param.bankNum, Flipped(DecoupledIO(new MicroOp)))
+    val specWakeup = Output(Vec(aluIssuePortNum + mulIssuePortNum, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
   })
   io.enq.suggestName("new_enq")
 
-  private val wakeupSignals = VecInit(wakeup.map(_._1).map(elm => {
+
+  private val internalWakeupSignals = Wire(Vec(aluIssuePortNum + mulIssuePortNum, Valid(new WakeUpInfo)))
+  io.specWakeup := internalWakeupSignals
+
+  private val wakeupSignals = VecInit(wakeup.map(_._1).map(elm =>{
     val wkp = Wire(Valid(new WakeUpInfo))
     wkp.valid := elm.valid
     wkp.bits.pdest := elm.bits.uop.pdest
@@ -60,32 +74,33 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     wkp.bits.lpv := 0.U.asTypeOf(wkp.bits.lpv)
     wkp
   }))
-  private val rsBankSeq = Seq.tabulate(param.bankNum)(_ => {
-    val mod = Module(new FloatingReservationBank(entriesNumPerBank, issueWidth, wakeup.length, loadUnitNum))
+  private val rsBankSeq = Seq.tabulate(param.bankNum)( _ => {
+    val mod = Module(new IntegerReservationBank(entriesNumPerBank, issueWidth, (wakeupSignals ++ internalWakeupSignals).length, loadUnitNum))
     mod.io.redirect := io.redirect
-    mod.io.wakeup := wakeupSignals
+    mod.io.wakeup := wakeupSignals ++ internalWakeupSignals
     mod.io.loadEarlyWakeup := io.loadEarlyWakeup
     mod.io.earlyWakeUpCancel := io.earlyWakeUpCancel
     mod
   })
   private val allocateNetwork = Module(new AllocateNetwork(param.bankNum, entriesNumPerBank, Some("IntegerAllocateNetwork")))
 
-  private val fmaIssuePortNum = issue.count(_._2.hasFmac)
-  private val fdivIssuePortNum = issue.count(_._2.hasFdiv)
-  private val fmiscIssuePortNum = issue.count(_._2.hasFmisc)
-  private val fmaExuCfg = fmacIssue.flatMap(_._2.exuConfigs).filter(_.exuType == ExuType.fmac).head
-  private val fdivExuCfg = fdivIssue.flatMap(_._2.exuConfigs).filter(_.exuType == ExuType.fdiv).head
-  private val fmiscExuCfg = fmiscIssue.flatMap(_._2.exuConfigs).filter(_.exuType == ExuType.fmisc).head
+  private val aluExuCfg = aluIssue.flatMap(_._2.exuConfigs).filter(_.exuType == ExuType.alu).head
+  private val mulExuCfg = mulIssue.flatMap(_._2.exuConfigs).filter(_.exuType == ExuType.mul).head
+  private val i2fExuCfg = i2fIssue.flatMap(_._2.exuConfigs).filter(_.exuType == ExuType.i2f).head
+  private val divExuCfg = divIssue.flatMap(_._2.exuConfigs).filter(_.exuType == ExuType.div).head
+  private val jmpExuCfg = jmpIssue.flatMap(_._2.exuConfigs).filter(_.exuType == ExuType.jmp).head
 
-  private val fmacSelectNetwork = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, fmaIssuePortNum, fmaExuCfg, Some(s"FloatingFmacSelectNetwork")))
-  private val fdivSelectNetwork = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, fdivIssuePortNum, fdivExuCfg, Some(s"FloatingFdivSelectNetwork")))
-  private val fmiscSelectNetwork = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, fmiscIssuePortNum, fmiscExuCfg, Some(s"FloatingFmiscSelectNetwork")))
-  fdivSelectNetwork.io.tokenRelease.get.zip(wakeup.filter(_._2.exuType == ExuType.fdiv).map(_._1)).foreach({
-    case (sink, source) =>
+  private val aluSelectNetwork = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, aluIssuePortNum, aluExuCfg, Some(s"IntegerAluSelectNetwork")))
+  private val mulSelectNetwork = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, mulIssuePortNum, mulExuCfg, Some(s"IntegerMulSelectNetwork")))
+  private val i2fSelectNetwork = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, i2fIssuePortNum, i2fExuCfg, Some(s"IntegerI2fSelectNetwork")))
+  private val divSelectNetwork = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, divIssuePortNum, divExuCfg, Some(s"IntegerDivSelectNetwork")))
+  private val jmpSelectNetwork = Module(new SelectNetwork(param.bankNum, entriesNumPerBank, jmpIssuePortNum, jmpExuCfg, Some(s"IntegerJmpSelectNetwork")))
+  divSelectNetwork.io.tokenRelease.get.zip(wakeup.filter(_._2.exuType == ExuType.div).map(_._1)).foreach({
+    case(sink, source) =>
       sink.valid := source.valid
       sink.bits := source.bits.uop.pdest
   })
-  private val selectNetworkSeq = Seq(fmacSelectNetwork, fdivSelectNetwork, fmiscSelectNetwork)
+  private val selectNetworkSeq = Seq(aluSelectNetwork, mulSelectNetwork, i2fSelectNetwork, divSelectNetwork, jmpSelectNetwork)
   selectNetworkSeq.foreach(sn => {
     sn.io.selectInfo.zip(rsBankSeq).foreach({ case (sink, source) =>
       sink := source.io.selectInfo
@@ -93,56 +108,62 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     sn.io.redirect := io.redirect
   })
 
-  allocateNetwork.io.enqFromDispatch.zip(io.enq).foreach({ case (sink, source) =>
+  allocateNetwork.io.enqFromDispatch.zip(io.enq).foreach({case(sink, source) =>
     sink.valid := source.valid
     sink.bits := source.bits
     source.ready := sink.ready
   })
 
-  for (((fromAllocate, toAllocate), rsBank) <- allocateNetwork.io.enqToRs
+  for(((fromAllocate, toAllocate), rsBank) <- allocateNetwork.io.enqToRs
     .zip(allocateNetwork.io.entriesValidBitVecList)
-    .zip(rsBankSeq)) {
+    .zip(rsBankSeq)){
     toAllocate := rsBank.io.allocateInfo
     rsBank.io.enq.valid := fromAllocate.valid
     rsBank.io.enq.bits.data := fromAllocate.bits.uop
     rsBank.io.enq.bits.addrOH := fromAllocate.bits.addrOH
   }
 
-  private val fmacSelectRespQueue = new mutable.Queue[DecoupledIO[SelectResp]] ++ fmacSelectNetwork.io.issueInfo
-  private val fdivSelectRespQueue = new mutable.Queue[DecoupledIO[SelectResp]] ++ fdivSelectNetwork.io.issueInfo
-  private val fmiscSelectRespQueue = new mutable.Queue[DecoupledIO[SelectResp]] ++ fmiscSelectNetwork.io.issueInfo
-
-  private val fmacComplexIssuePorts = issue.filter(_._2.isFmac)
-  private val fmaDivComplexIssuePorts = issue.filter(_._2.isFmaDiv)
-  private val fmaMiscComplexIssuePorts = issue.filter(_._2.isFmaMisc)
-  private val issuePortsSeq = Seq(fmacComplexIssuePorts, fmaDivComplexIssuePorts, fmaMiscComplexIssuePorts)
-  private val bankNumForOneFmaPort = param.bankNum / fmaIssuePortNum
-  for ((issSeq, seqIdx) <- issuePortsSeq.zipWithIndex) {
-    val bankNumForEach = param.bankNum / issSeq.length
-
-    for ((iss, issIdx) <- issSeq.zipWithIndex) {
-      val issueDriver = Module(new DecoupledPipeline(true, param.bankNum, entriesNumPerBank))
+  private var internalWkpPortIdx = 0
+  private var aluPortIdx = 0
+  private var mulPortIdx = 0
+  private var i2fPortIdx = 0
+  private var divPortIdx = 0
+  private var jmpPortIdx = 0
+  for((iss, issuePortIdx) <- issue.zipWithIndex) {
+    prefix(iss._2.name + "_" + iss._2.id) {
+      val issueDriver = Module(new DecoupledPipeline(iss._2.isJmpCsr, param.bankNum, entriesNumPerBank))
       issueDriver.io.redirect := io.redirect
 
-      val midStateWaitQueue = Module(new MidStateWaitQueue(2, param.bankNum, entriesNumPerBank))
-      midStateWaitQueue.io.redirect := io.redirect
-
-      val issuePortIdx = issuePortsSeq.take(seqIdx).map(_.length).sum + issIdx
-
-      val selectInfoSeq = if (iss._2.isFmac) {
-        Seq(fmacSelectRespQueue.dequeue())
-      } else if (iss._2.isFmaDiv) {
-        Seq(fmacSelectRespQueue.dequeue(), fdivSelectRespQueue.dequeue())
+      val finalSelectInfo = if (iss._2.isJmpCsr) {
+        jmpPortIdx = jmpPortIdx + 1
+        jmpSelectNetwork.io.issueInfo(jmpPortIdx - 1)
+      } else if (iss._2.isAluMul) {
+        aluPortIdx = aluPortIdx + 1
+        mulPortIdx = mulPortIdx + 1
+        internalWkpPortIdx = internalWkpPortIdx + 2
+        val selectRespArbiter = Module(new Arbiter(new SelectResp(param.bankNum, entriesNumPerBank), 2))
+        selectRespArbiter.io.in(0) <> aluSelectNetwork.io.issueInfo(aluPortIdx - 1)
+        selectRespArbiter.io.in(1) <> mulSelectNetwork.io.issueInfo(mulPortIdx - 1)
+        internalWakeupSignals(internalWkpPortIdx - 2) := WakeupQueue(aluSelectNetwork.io.issueInfo(aluPortIdx - 1), aluSelectNetwork.cfg.latency, io.redirect)
+        internalWakeupSignals(internalWkpPortIdx - 1) := WakeupQueue(mulSelectNetwork.io.issueInfo(mulPortIdx - 1), mulSelectNetwork.cfg.latency, io.redirect)
+        selectRespArbiter.io.out
+      } else if (iss._2.isAluDiv) {
+        aluPortIdx = aluPortIdx + 1
+        divPortIdx = divPortIdx + 1
+        internalWkpPortIdx = internalWkpPortIdx + 1
+        val selectRespArbiter = Module(new Arbiter(new SelectResp(param.bankNum, entriesNumPerBank), 2))
+        selectRespArbiter.io.in(0) <> aluSelectNetwork.io.issueInfo(aluPortIdx - 1)
+        selectRespArbiter.io.in(1) <> divSelectNetwork.io.issueInfo(divPortIdx - 1)
+        internalWakeupSignals(internalWkpPortIdx - 1) := WakeupQueue(aluSelectNetwork.io.issueInfo(aluPortIdx - 1), aluSelectNetwork.cfg.latency, io.redirect)
+        selectRespArbiter.io.out
       } else {
-        Seq(fmacSelectRespQueue.dequeue(), fmiscSelectRespQueue.dequeue())
-      }
-
-      val finalSelectInfo = if (iss._2.isFmac) {
-        selectInfoSeq.head
-      } else {
-        val selectRespArbiter = Module(new Arbiter(selectInfoSeq.head.bits, 2))
-        selectRespArbiter.io.in(0) := selectInfoSeq.head
-        selectRespArbiter.io.in(0) := selectInfoSeq.last
+        aluPortIdx = aluPortIdx + 1
+        i2fPortIdx = i2fPortIdx + 1
+        internalWkpPortIdx = internalWkpPortIdx + 1
+        val selectRespArbiter = Module(new Arbiter(new SelectResp(param.bankNum, entriesNumPerBank), 2))
+        selectRespArbiter.io.in(0) <> aluSelectNetwork.io.issueInfo(aluPortIdx - 1)
+        selectRespArbiter.io.in(1) <> i2fSelectNetwork.io.issueInfo(i2fPortIdx - 1)
+        internalWakeupSignals(internalWkpPortIdx - 1) := WakeupQueue(aluSelectNetwork.io.issueInfo(aluPortIdx - 1), aluSelectNetwork.cfg.latency, io.redirect)
         selectRespArbiter.io.out
       }
 
@@ -154,7 +175,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
 
       val issueBundle = Wire(Valid(new MicroOp))
       issueBundle.valid := finalSelectInfo.valid
-      issueBundle.bits := Mux1H(rsBankRen, rsBankSeq.map(_.io.issueUop(bankNumForEach).bits))
+      issueBundle.bits := Mux1H(rsBankRen, rsBankSeq.map(_.io.issueUop(issuePortIdx).bits))
       issueBundle.bits.robIdx := finalSelectInfo.bits.info.robPtr
       issueBundle.bits.ctrl.rfWen := finalSelectInfo.bits.info.rfWen
       issueBundle.bits.ctrl.fpWen := finalSelectInfo.bits.info.fpWen
@@ -162,61 +183,22 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
       issueBundle.bits.ctrl.fuType := finalSelectInfo.bits.info.fuType
       issueBundle.bits.lpv := finalSelectInfo.bits.info.lpv
 
-      val midResultFromPayload = Wire(new FMAMidResult)
-      val midResultFromPayloadHi = Mux1H(rsBankRen, rsBankSeq.map(_.io.issueMidResult(bankNumForEach)))
-      val midResultFromPayloadLo = 0.U(XLEN - 1, 0)
-      midResultFromPayload := Cat(midResultFromPayloadHi, midResultFromPayloadLo)
-
-      val midResultFromBypass = Wire(new FMAMidResult)
-      midResultFromBypass := iss._1.fmaMidState.out.bits.midResult
-
-      val midResult = Wire(new FMAMidResult)
-
       finalSelectInfo.ready := issueDriver.io.enq.ready
       issueDriver.io.enq.valid := issueBundle.valid
       issueDriver.io.enq.bits.uop := issueBundle.bits
-      issueDriver.io.enq.bits.fmaMidStateIssue.valid := finalSelectInfo.bits.info.midResultReadEn
-      issueDriver.io.enq.bits.fmaMidStateIssue.bits := midResult
-      issueDriver.io.enq.bits.fmaWaitForAdd := finalSelectInfo.bits.info.fmaWaitAdd
+      issueDriver.io.enq.bits.fmaMidStateIssue.valid := false.B
+      issueDriver.io.enq.bits.fmaMidStateIssue.bits := DontCare
+      issueDriver.io.enq.bits.fmaWaitForAdd := false.B
+      issueDriver.io.enq.bits.bankIdxOH := DontCare
+      issueDriver.io.enq.bits.entryIdxOH := DontCare
 
       iss._1.issue.valid := issueDriver.io.deq.valid
       iss._1.issue.bits.uop := issueDriver.io.deq.bits.uop
       iss._1.issue.bits.src := DontCare
-      iss._1.fmaMidState.in := issueDriver.io.deq.bits.fmaMidStateIssue
-      iss._1.fmaMidState.waitForAdd := issueDriver.io.deq.bits.fmaWaitForAdd
+      iss._1.fmaMidState.in.valid := false.B
+      iss._1.fmaMidState.in.bits := DontCare
+      iss._1.fmaMidState.waitForAdd := false.B
       issueDriver.io.deq.ready := iss._1.issue.ready
-
-      val midStateWaitQueueInValidReg = RegInit(false.B)
-      val midStateWaitQueueInDataReg = Reg(new SelectResp(param.bankNum, entriesNumPerBank))
-      when(issueDriver.io.deq.fire && !issueDriver.io.deq.bits.uop.robIdx.needFlush(io.redirect)) {
-        midStateWaitQueueInValidReg := issueDriver.io.deq.bits.fmaWaitForAdd
-      }
-      when(issueDriver.io.deq.fire && issueDriver.io.deq.bits.fmaWaitForAdd && !issueDriver.io.deq.bits.uop.robIdx.needFlush(io.redirect)) {
-        midStateWaitQueueInDataReg := issueDriver.io.deq.bits.fmaWaitForAdd
-        midStateWaitQueueInDataReg.bankIdxOH := issueDriver.io.deq.bits.bankIdxOH
-        midStateWaitQueueInDataReg.entryIdxOH := issueDriver.io.deq.bits.entryIdxOH
-        midStateWaitQueueInDataReg.info := DontCare
-        midStateWaitQueueInDataReg.info.robPtr := issueDriver.io.deq.bits.uop.robIdx
-        midStateWaitQueueInDataReg.info.pdest := issueDriver.io.deq.bits.uop.pdest
-      }
-      midStateWaitQueue.io.in.valid := midStateWaitQueueInValidReg && iss._1.fuInFire && !midStateWaitQueueInDataReg.info.robPtr.needFlush(io.redirect)
-      midStateWaitQueue.io.in.bits := midStateWaitQueueInDataReg
-
-      val bankForThisWaitQueue = rsBankSeq.slice(issuePortIdx * bankNumForOneFmaPort, issuePortIdx * bankNumForOneFmaPort + bankNumForOneFmaPort)
-      val bankEn = Mux(midStateWaitQueue.io.earlyWakeUp.valid, midStateWaitQueue.io.out.bits.bankIdxOH, 0.U)
-        .asBools.slice(issuePortIdx * bankNumForOneFmaPort, issuePortIdx * bankNumForOneFmaPort + bankNumForOneFmaPort)
-      bankForThisWaitQueue.zip(bankEn).foreach({
-        case (rb, en) =>
-          rb.io.midResultReceived.valid := en
-          rb.io.midResultReceived.bits := midStateWaitQueue.io.earlyWakeUp.bits.entryIdxOH
-      })
-
-      val midStateShouldBypass =
-        iss._1.fmaMidState.out.valid &&
-          midStateWaitQueue.io.out.valid &&
-          midStateWaitQueue.io.out.bits.info.pdest === iss._1.fmaMidState.out.bits.pdest
-
-      midResult := Mux(midStateShouldBypass, midResultFromBypass, midResultFromPayload)
     }
   }
 }

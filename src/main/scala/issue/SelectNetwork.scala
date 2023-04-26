@@ -22,7 +22,7 @@ package issue
 import chisel3._
 import chisel3.util._
 import common.{FuType, Redirect, RobPtr, XSBundle, XSModule}
-import exu.{ExuConfig, ExuType}
+import execute.exu.ExuConfig
 import xs.utils.Assertion.xs_assert
 import xs.utils.ParallelOperation
 
@@ -118,7 +118,7 @@ class Selector(bankNum:Int, entryNum:Int, inputWidth:Int) extends Module{
   * }}}
 */
 
-class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, cfg:ExuConfig, name:Option[String] = None) extends XSModule {
+class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, val cfg:ExuConfig, name:Option[String] = None) extends XSModule {
   require(issueNum <= bankNum && 0 < issueNum && bankNum % issueNum == 0, "Illegal number of issue ports are supported now!")
   private val fuTypeList = cfg.fuConfigs.map(_.fuType)
   val io = IO(new Bundle{

@@ -18,6 +18,7 @@ case class ExuComplexParam
   val hasAlu: Boolean = exuConfigs.map(_.exuType == ExuType.alu).reduce(_ || _)
   val hasMul: Boolean = exuConfigs.map(_.exuType == ExuType.mul).reduce(_ || _)
   val hasDiv: Boolean = exuConfigs.map(_.exuType == ExuType.div).reduce(_ || _)
+  val hasI2f: Boolean = exuConfigs.map(_.exuType == ExuType.i2f).reduce(_ || _)
   val hasFmac: Boolean = exuConfigs.map(_.exuType == ExuType.fmac).reduce(_ || _)
   val hasFmisc: Boolean = exuConfigs.map(_.exuType == ExuType.fmisc).reduce(_ || _)
   val hasFdiv: Boolean = exuConfigs.map(_.exuType == ExuType.fdiv).reduce(_ || _)
@@ -29,9 +30,10 @@ case class ExuComplexParam
   val isMemType:Boolean = exuConfigs.head.isMemType
   val srcNum:Int = exuConfigs.map(_.srcNum).max
 
-  val isAluDiv:Boolean = hasDiv && hasAlu
-  val isAluJmp:Boolean = hasJmp && hasAlu
-  val isAluMul:Boolean = hasMul && hasAlu
+  val isAluDiv:Boolean = hasAlu && hasDiv
+  val isAluI2f:Boolean = hasAlu && hasI2f
+  val isAluMul:Boolean = hasAlu && hasMul
+  val isJmpCsr:Boolean = hasJmp
   val isFmac:Boolean = hasFmac && !hasFdiv && !hasFmisc
   val isFmaDiv:Boolean = hasFmac && hasFdiv
   val isFmaMisc:Boolean = hasFmac && hasFmisc

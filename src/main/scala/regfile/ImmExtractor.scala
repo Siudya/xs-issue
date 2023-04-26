@@ -4,7 +4,7 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import common._
 import execute.exucx.ExuComplexParam
-import exu.ExuType
+import execute.exu.ExuType
 import xs.utils.SignExt
 
 object ImmExtractor extends XSParam {

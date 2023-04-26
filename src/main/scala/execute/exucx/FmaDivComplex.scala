@@ -15,7 +15,7 @@ class FmaDivComplex (id: Int)(implicit p:Parameters) extends BasicExuComplex{
   fdiv.issueNode :*= issueNode
   writebackNode :=* fmac.writebackNode
   writebackNode :=* fdiv.writebackNode
-  lazy val module = new BasicExuComplexImp(this) {
+  lazy val module = new BasicExuComplexImp(this, 0) {
     require(issueNode.in.length == 1)
     require(issueNode.out.length == 2)
     private val issueIn = issueNode.in.head._1

@@ -18,7 +18,7 @@ class IntegerReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, load
     }))
 
     val issueAddr = Input(Vec(issueWidth, Valid(UInt(entryNum.W))))
-    val issueData = Output(Vec(issueWidth, Valid(new MicroOp)))
+    val issueUop = Output(Vec(issueWidth, Valid(new MicroOp)))
     val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
@@ -59,7 +59,7 @@ class IntegerReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, load
   payloadArray.io.write.en := io.enq.valid
   payloadArray.io.write.addr := io.enq.bits.addrOH
   payloadArray.io.write.data := io.enq.bits.data
-  payloadArray.io.read.zip(io.issueAddr).zip(io.issueData).foreach({
+  payloadArray.io.read.zip(io.issueAddr).zip(io.issueUop).foreach({
     case((port, iAddr), iData) =>{
       port.addr := iAddr.bits
       iData.bits := port.data

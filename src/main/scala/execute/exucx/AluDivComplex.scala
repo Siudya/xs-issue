@@ -14,23 +14,19 @@ class AluDivComplex(id: Int, bypassNum:Int)(implicit p:Parameters) extends Basic
   div.issueNode :*= issueNode
   writebackNode :=* alu.writebackNode
   writebackNode :=* div.writebackNode
-  lazy val module = new BasicExuComplexImp(this){
+  lazy val module = new BasicExuComplexImp(this, bypassNum){
     require(issueNode.in.length == 1)
     require(issueNode.out.length == 2)
-    val io = IO(new Bundle{
-      val bypassIn = Input(Vec(bypassNum, Valid(new ExuOutput)))
-    })
     private val issueIn = issueNode.in.head._1
     private val issueAlu = issueNode.out.filter(_._2.exuType == ExuType.alu).head._1
     private val issueDiv = issueNode.out.filter(_._2.exuType == ExuType.div).head._1
-    val aa = issueNode.out
 
     issueAlu <> issueIn
-    alu.module.io.bypassIn := io.bypassIn
+    alu.module.io.bypassIn := bypassIn
     alu.module.redirectIn := redirectIn
 
     issueDiv <> issueIn
-    div.module.io.bypassIn := io.bypassIn
+    div.module.io.bypassIn := bypassIn
     div.module.redirectIn := redirectIn
 
     issueIn.issue.ready := Mux(issueIn.issue.bits.uop.ctrl.fuType === FuType.alu, issueAlu.issue.ready, issueDiv.issue.ready)

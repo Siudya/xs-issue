@@ -2,15 +2,12 @@ package regfile
 import chisel3._
 import chisel3.experimental.prefix
 import chisel3.util._
-import common.{ExuInput, FuType, MicroOp, Redirect, SrcType, XSParam}
-import exu.ExuType
+import common.{ExuInput, Redirect, SrcType, XSParam}
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.config.Parameters
-import fu.fpu.FMAMidResult
-import issue.IssueBundle
+import execute.fu.fpu.FMAMidResult
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 import xs.utils.Assertion.xs_assert
-import xs.utils.LogicShiftRight
 class FloatingRegFile (val entriesNum:Int, name:String)(implicit p: Parameters) extends LazyModule with XSParam{
   private val wbNodeParam = WriteBackSinkParam(name, WriteBackSinkType.fpRf)
   val issueNode = new RegfileIssueNode

@@ -5,7 +5,7 @@ import chisel3.util._
 import common.{ExuInput, Redirect, SrcType, XSParam}
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.config.Parameters
-import fu.fpu.FMAMidResult
+import execute.fu.fpu.FMAMidResult
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 import xs.utils.Assertion.xs_assert
 class IntegerRegFile(val entriesNum:Int, name:String)(implicit p: Parameters) extends LazyModule with XSParam{
