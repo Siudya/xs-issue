@@ -9,7 +9,18 @@ import execute.exucx.ExuComplexParam
 
 
 object RsIssueNodeImpl extends SimpleNodeImp[RsParam, Seq[ExuComplexParam], (RsParam, Seq[ExuComplexParam]), Vec[IssueBundle]]{
-  override def edge(pd: RsParam, pu: Seq[ExuComplexParam], p: config.Parameters, sourceInfo: SourceInfo): (RsParam, Seq[ExuComplexParam]) = (pd,pu)
+  override def edge(pd: RsParam, pu: Seq[ExuComplexParam], p: config.Parameters, sourceInfo: SourceInfo): (RsParam, Seq[ExuComplexParam]) = {
+    require(pd.isLegal)
+    if (pd.isIntRs) {
+      (pd, pu.filter(_.isIntType))
+    } else if (pd.isMemRs) {
+      (pd, pu.filter(_.isMemType))
+    } else if (pd.isVecRs) {
+      (pd, pu.filter(_.isVecType))
+    } else {
+      (pd, pu.filter(_.isFpType))
+    }
+  }
   override def bundle(e: (RsParam, Seq[ExuComplexParam])): Vec[IssueBundle] = Vec(e._2.length, new IssueBundle(e._1.bankNum, e._1.entriesNum))
   override def render(e: (RsParam, Seq[ExuComplexParam])): RenderedEdge = {
     RenderedEdge("#00ff00", e._1.TypeName + "Issue")

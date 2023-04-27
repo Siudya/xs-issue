@@ -6,7 +6,7 @@ import chisel3.internal.sourceinfo.SourceInfo
 import execute.exucx.ExuComplexParam
 import issue.{IssueBundle, RsParam}
 
-object RegFileTopInNodeInwardImpl extends InwardNodeImp[RsParam,Seq[ExuComplexParam],(RsParam, Seq[ExuComplexParam]),Vec[IssueBundle]]{
+object RegFileNodeInwardImpl extends InwardNodeImp[RsParam,Seq[ExuComplexParam],(RsParam, Seq[ExuComplexParam]),Vec[IssueBundle]]{
 
   override def edgeI(pd: RsParam, pu: Seq[ExuComplexParam], p: config.Parameters, sourceInfo: SourceInfo): (RsParam, Seq[ExuComplexParam]) = {
     require(pd.isLegal)
@@ -23,7 +23,7 @@ object RegFileTopInNodeInwardImpl extends InwardNodeImp[RsParam,Seq[ExuComplexPa
   override def bundleI(ei: (RsParam, Seq[ExuComplexParam])): Vec[IssueBundle] = Vec(ei._2.length, new IssueBundle(ei._1.bankNum, ei._1.entriesNum))
   override def render(e: (RsParam, Seq[ExuComplexParam])): RenderedEdge = RenderedEdge("#0000ff", e._1.TypeName + "Issue")
 }
-object RegFileTopInNodeOutwardImpl extends OutwardNodeImp[Seq[RsParam], ExuComplexParam, (RsParam, ExuComplexParam), IssueBundle]{
+object RegFileNodeOutwardImpl extends OutwardNodeImp[Seq[RsParam], ExuComplexParam, (RsParam, ExuComplexParam), IssueBundle]{
   override def edgeO(pd: Seq[RsParam], pu: ExuComplexParam, p: config.Parameters, sourceInfo: SourceInfo): (RsParam, ExuComplexParam) = {
     require(pu.isFpType || pu.isVecType || pu.isIntType || pu.isMemType)
     if(pu.isFpType){
@@ -39,8 +39,8 @@ object RegFileTopInNodeOutwardImpl extends OutwardNodeImp[Seq[RsParam], ExuCompl
   override def bundleO(eo: (RsParam, ExuComplexParam)): IssueBundle = new IssueBundle(eo._1.bankNum, eo._1.entriesNum)
 }
 
-class RegFileTopInNode(implicit valName: ValName) extends MixedNexusNode(
-  inner = RegFileTopInNodeInwardImpl, outer = RegFileTopInNodeOutwardImpl
+class RegFileNode(implicit valName: ValName) extends MixedNexusNode(
+  inner = RegFileNodeInwardImpl, outer = RegFileNodeOutwardImpl
 )(
   { pd => pd }, { pu => pu }
 )

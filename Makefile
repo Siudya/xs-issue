@@ -8,18 +8,6 @@ rtl: clean
 	rm build/*.fir
 	rm build/*.anno.json
 
-intrtl: clean
-	mill xs-issue.test.runMain GenIntRtl -td build --full-stacktrace -X sverilog -e sverilog --emission-options disableRegisterRandomization --no-cse
-	sed -i 's/\?baifenhao\!/%/g' build/*.sv
-	rm build/*.fir
-	rm build/*.anno.json
-
-fprtl: clean
-	mill xs-issue.test.runMain GenFpRtl -td build --full-stacktrace -X sverilog -e sverilog --emission-options disableRegisterRandomization --no-cse
-	sed -i 's/\?baifenhao\!/%/g' build/*.sv
-	rm build/*.fir
-	rm build/*.anno.json
-
 help:
 	mill xs-issue.test.runMain GenRtl --help
 

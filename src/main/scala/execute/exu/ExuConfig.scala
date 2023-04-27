@@ -42,6 +42,8 @@ object ExuType{
   def fpTypes: Seq[Int] = Seq(fmisc, fmac, fdiv)
   def vecTypes: Seq[Int] = Seq(vred, vmisc, vfp, vint)
   def typeToString(in:Int):String = mapping(in)
+  def bypassIntList: Seq[Int] = Seq(alu, mul, load)
+  def bypassFpList: Seq[Int] = Seq(load)
 }
 
 case class ExuConfig
@@ -54,12 +56,14 @@ case class ExuConfig
   needToken:Boolean = false,
   speculativeWakeup:Boolean = false
 ){
-  val srcNum:Int = fuConfigs.map(_.srcCnt).max
+  val intSrcNum:Int = fuConfigs.map(_.numIntSrc).max
+  val fpSrcNum:Int = fuConfigs.map(_.numFpSrc).max
   val hasFastWakeup: Boolean = fuConfigs.map(_.latency).max != Int.MaxValue
   val latency: Int = fuConfigs.map(_.latency).max
   val exceptionOut: Seq[Int] = fuConfigs.map(_.exceptionOut).reduce(_ ++ _).distinct.sorted
   val writeIntRf = fuConfigs.map(_.writeIntRf).reduce(_||_)
   val writeFpRf = fuConfigs.map(_.writeFpRf).reduce(_||_)
+  val writeVecRf = fuConfigs.map(_.writeVecRf).reduce(_||_)
   val wakeUpIntRs = fuConfigs.map(_.writeIntRf).reduce(_||_) && !hasFastWakeup
   val wakeUpFpRs = fuConfigs.map(_.writeFpRf).reduce(_||_) && !hasFastWakeup
   val wakeUpMemRs =  fuConfigs.map(e => e.writeIntRf || e.writeFpRf).reduce(_||_) && !hasFastWakeup
@@ -69,7 +73,9 @@ case class ExuConfig
   val isMemType = ExuType.memTypes.contains(exuType)
   val isFpType = ExuType.fpTypes.contains(exuType)
   val isVecType = ExuType.vecTypes.contains(exuType)
+  val bypassIntRegfile = ExuType.bypassIntList.contains(exuType)
+  val bypassFpRegfile = ExuType.bypassFpList.contains(exuType)
 
-  override def toString = s"\n\t${name}: srcNum: ${srcNum} Type: ${ExuType.typeToString(exuType)} " +
+  override def toString = s"\n\t${name}: intSrcNum: ${intSrcNum} fpSrcNum: ${fpSrcNum} Type: ${ExuType.typeToString(exuType)} " +
     "\n\t\t Functions Units: " + fuConfigs.map(_.toString + " ").reduce(_++_)
 }

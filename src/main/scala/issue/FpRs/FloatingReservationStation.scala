@@ -29,7 +29,7 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
   require(param.bankNum == 4)
   require(param.entriesNum % param.bankNum == 0)
   private val issue = outer.issueNode.out.head._1 zip outer.issueNode.out.head._2._2
-  println("Floating Reservation Issue Ports Config:")
+  println("\nFloating Reservation Issue Ports Config:")
   outer.issueNode.out.head._2._2.foreach(cfg => println(cfg))
   private val wbIn = outer.wakeupNode.in.head
   private val wakeup = wbIn._1.zip(wbIn._2)

@@ -8,7 +8,7 @@ import execute.exu.ExuType
 import xs.utils.SignExt
 
 object ImmExtractor extends XSParam {
-  def apply(cfg: ExuComplexParam, in: ExuInput, pc: Option[UInt], target: Option[UInt])
+  def apply(cfg: ExuComplexParam, in: ExuInput, pc: Option[UInt] = None, target: Option[UInt] = None)
            (implicit p: Parameters): ExuInput = {
     if (cfg.hasJmp) {
       Mux(in.uop.ctrl.fuType === FuType.jmp, JumpImmExtractor(in, pc.get, target.get), AluImmExtractor(in))

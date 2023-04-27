@@ -9,10 +9,10 @@ import freechips.rocketchip.diplomacy.LazyModule
 import xs.utils.Assertion.xs_assert
 
 class FmaMiscComplex(id: Int)(implicit p:Parameters) extends BasicExuComplex{
-  val fmisc = LazyModule(new FmiscExu(id, "FmaMiscComplex"))
   val fmac = LazyModule(new FmacExu(id, "FmaMiscComplex"))
-  fmisc.issueNode :*= issueNode
+  val fmisc = LazyModule(new FmiscExu(id, "FmaMiscComplex"))
   fmac.issueNode :*= issueNode
+  fmisc.issueNode :*= issueNode
   writebackNode :=* fmisc.writebackNode
   writebackNode :=* fmac.writebackNode
   lazy val module = new BasicExuComplexImp(this, 0){
