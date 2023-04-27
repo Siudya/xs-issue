@@ -28,9 +28,9 @@ class FloatingReservationStation(bankNum:Int, entryNum:Int)(implicit p: Paramete
 class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsParam) extends LazyModuleImp(outer) with XSParam {
   require(param.bankNum == 4)
   require(param.entriesNum % param.bankNum == 0)
-  private val issue = outer.issueNode.out.head._1 zip outer.issueNode.out.head._2
+  private val issue = outer.issueNode.out.head._1 zip outer.issueNode.out.head._2._2
   println("Floating Reservation Issue Ports Config:")
-  outer.issueNode.out.head._2.foreach(cfg => println(cfg))
+  outer.issueNode.out.head._2._2.foreach(cfg => println(cfg))
   private val wbIn = outer.wakeupNode.in.head
   private val wakeup = wbIn._1.zip(wbIn._2)
   issue.foreach(elm => elm._2.exuConfigs.foreach(elm0 => require(ExuType.fpTypes.contains(elm0.exuType))))
@@ -180,6 +180,8 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
       iss._1.issue.bits.src := DontCare
       iss._1.fmaMidState.in := issueDriver.io.deq.bits.fmaMidStateIssue
       iss._1.fmaMidState.waitForAdd := issueDriver.io.deq.bits.fmaWaitForAdd
+      iss._1.rsIdx.bankIdxOH := issueDriver.io.deq.bits.bankIdxOH
+      iss._1.rsIdx.entryIdxOH := issueDriver.io.deq.bits.entryIdxOH
       issueDriver.io.deq.ready := iss._1.issue.ready
 
       val midStateWaitQueueInValidReg = RegInit(false.B)

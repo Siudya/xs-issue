@@ -10,6 +10,7 @@ case class FuConfig
   numFpSrc: Int,
   writeIntRf: Boolean,
   writeFpRf: Boolean,
+  writeVecRf: Boolean,
   writeFflags: Boolean,
   latency: Int,
   hasRedirect: Boolean,
@@ -27,6 +28,7 @@ object FuConfigs{
     numFpSrc = 0,
     writeIntRf = true,
     writeFpRf = false,
+    writeVecRf = false,
     writeFflags = false,
     latency = 0,
     hasRedirect = true
@@ -38,6 +40,7 @@ object FuConfigs{
     numFpSrc = 0,
     writeIntRf = true,
     writeFpRf = false,
+    writeVecRf = false,
     writeFflags = false,
     latency = 1, //Actual latency is 2. It is reduced to 1 because of bypass network
     hasRedirect = false
@@ -49,6 +52,7 @@ object FuConfigs{
     numFpSrc = 0,
     writeIntRf = true,
     writeFpRf = false,
+    writeVecRf = false,
     writeFflags = false,
     latency = 1, //Actual latency is 2. It is reduced to 1 because of bypass network
     hasRedirect = false
@@ -60,6 +64,7 @@ object FuConfigs{
     numFpSrc = 0,
     writeIntRf = true,
     writeFpRf = false,
+    writeVecRf = false,
     writeFflags = false,
     latency = Int.MaxValue,
     hasRedirect = false
@@ -71,6 +76,7 @@ object FuConfigs{
     numFpSrc = 0,
     writeIntRf = true,
     writeFpRf = false,
+    writeVecRf = false,
     writeFflags = false,
     latency = 0,
     hasRedirect = true
@@ -82,6 +88,7 @@ object FuConfigs{
     numFpSrc = 0,
     writeIntRf = false,
     writeFpRf = false,
+    writeVecRf = false,
     writeFflags = false,
     latency = Int.MaxValue,
     hasRedirect = false,
@@ -94,6 +101,7 @@ object FuConfigs{
     numFpSrc = 0,
     writeIntRf = true,
     writeFpRf = false,
+    writeVecRf = false,
     writeFflags = false,
     latency = Int.MaxValue,
     hasRedirect = false,
@@ -106,6 +114,7 @@ object FuConfigs{
     numFpSrc = 0,
     writeIntRf = false,
     writeFpRf = true,
+    writeVecRf = false,
     writeFflags = true,
     latency = 2,
     hasRedirect = false
@@ -117,6 +126,7 @@ object FuConfigs{
     numFpSrc = 3,
     writeIntRf = false,
     writeFpRf = true,
+    writeVecRf = false,
     writeFflags = true,
     latency = Int.MaxValue,
     hasRedirect = false
@@ -129,6 +139,7 @@ object FuConfigs{
     numFpSrc = 1,
     writeIntRf = true,
     writeFpRf = false,
+    writeVecRf = false,
     writeFflags = true,
     latency = 2,
     hasRedirect = false
@@ -141,6 +152,7 @@ object FuConfigs{
     numFpSrc = 1,
     writeIntRf = false,
     writeFpRf = true,
+    writeVecRf = false,
     writeFflags = true,
     latency = 2,
     hasRedirect = false
@@ -153,6 +165,7 @@ object FuConfigs{
     numFpSrc = 2,
     writeIntRf = false,
     writeFpRf = true,
+    writeVecRf = false,
     writeFflags = true,
     latency = Int.MaxValue,
     hasRedirect = false

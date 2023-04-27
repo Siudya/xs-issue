@@ -19,8 +19,8 @@ class FmaMiscComplex(id: Int)(implicit p:Parameters) extends BasicExuComplex{
     require(issueNode.in.length == 1)
     require(issueNode.out.length == 2)
     private val issueIn = issueNode.in.head._1
-    private val issueFmac = issueNode.out.filter(_._2.exuType == ExuType.fmac).head._1
-    private val issueFmisc = issueNode.out.filter(_._2.exuType == ExuType.fmisc).head._1
+    private val issueFmac = issueNode.out.filter(_._2._2.exuType == ExuType.fmac).head._1
+    private val issueFmisc = issueNode.out.filter(_._2._2.exuType == ExuType.fmisc).head._1
 
     issueFmac <> issueIn
     fmac.module.redirectIn := redirectIn
@@ -35,7 +35,7 @@ class FmaMiscComplex(id: Int)(implicit p:Parameters) extends BasicExuComplex{
 
     issueIn.fuInFire := DontCare
     issueIn.issue.ready := Mux(issueIn.issue.bits.uop.ctrl.fuType === FuType.fmac, issueFmac.issue.ready, issueFmisc.issue.ready)
-    private val issueFuHit = issueNode.in.head._2.exuConfigs.flatMap(_.fuConfigs).map(_.fuType === issueIn.issue.bits.uop.ctrl.fuType).reduce(_ | _)
+    private val issueFuHit = issueNode.in.head._2._2.exuConfigs.flatMap(_.fuConfigs).map(_.fuType === issueIn.issue.bits.uop.ctrl.fuType).reduce(_ | _)
     xs_assert(Mux(issueIn.issue.valid, issueFuHit, true.B))
   }
 }

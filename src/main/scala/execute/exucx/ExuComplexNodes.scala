@@ -25,9 +25,14 @@ case class ExuComplexParam
   val hasLoad: Boolean = exuConfigs.map(_.exuType == ExuType.load).reduce(_ || _)
   val hasSta: Boolean = exuConfigs.map(_.exuType == ExuType.sta).reduce(_ || _)
   val hasStd: Boolean = exuConfigs.map(_.exuType == ExuType.std).reduce(_ || _)
+  val hasVred:Boolean = exuConfigs.map(_.exuType == ExuType.vred).reduce(_ || _)
+  val hasVmisc:Boolean = exuConfigs.map(_.exuType == ExuType.vmisc).reduce(_ || _)
+  val hasVfp:Boolean = exuConfigs.map(_.exuType == ExuType.vfp).reduce(_ || _)
+  val hasVint:Boolean = exuConfigs.map(_.exuType == ExuType.vint).reduce(_ || _)
   val isIntType:Boolean = exuConfigs.head.isIntType
   val isFpType:Boolean = exuConfigs.head.isFpType
   val isMemType:Boolean = exuConfigs.head.isMemType
+  val isVecType:Boolean = exuConfigs.head.isVecType
   val srcNum:Int = exuConfigs.map(_.srcNum).max
 
   val isAluDiv:Boolean = hasAlu && hasDiv
@@ -40,20 +45,24 @@ case class ExuComplexParam
 
   val needToken:Boolean = exuConfigs.map(_.needToken).reduce(_||_)
 
+  val readIntegerRegfile:Boolean = isAluDiv || isAluI2f || isAluMul || isJmpCsr || hasSta || hasStd || hasLoad || hasVmisc || hasVint
+  val readFloatingRegfile:Boolean = isFmac || isFmaDiv || isFmaMisc || hasStd || hasVfp
+  val readVectorRegfile:Boolean = isVecType || hasLoad || hasStd || hasSta
+
   override def toString:String = s"${name}: " + exuConfigs.map(_.toString).reduce(_++_)
 }
-object ExuComplexIssueInwardNodeImpl extends InwardNodeImp[Option[RsParam], ExuComplexParam, ExuComplexParam, IssueBundle]{
-  override def edgeI(pd: Option[RsParam], pu: ExuComplexParam, p: config.Parameters, sourceInfo: SourceInfo): ExuComplexParam = pu
-  override def bundleI(ei: ExuComplexParam): IssueBundle = new IssueBundle
-  override def render(ei: ExuComplexParam): RenderedEdge = RenderedEdge("#0000ff", ei.exuConfigs.map(_.name + "_").reduce(_++_))
+object ExuComplexIssueInwardNodeImpl extends InwardNodeImp[RsParam, ExuComplexParam, (RsParam, ExuComplexParam), IssueBundle]{
+  override def edgeI(pd: RsParam, pu: ExuComplexParam, p: config.Parameters, sourceInfo: SourceInfo): (RsParam, ExuComplexParam) = (pd,pu)
+  override def bundleI(ei: (RsParam, ExuComplexParam)): IssueBundle = new IssueBundle(ei._1.bankNum, ei._1.entriesNum)
+  override def render(ei: (RsParam, ExuComplexParam)): RenderedEdge = RenderedEdge("#0000ff", ei._2.exuConfigs.map(_.name + "_").reduce(_++_))
 }
-object ExuComplexIssueOutwardNodeImpl extends OutwardNodeImp[Option[RsParam], ExuConfig, ExuConfig, IssueBundle]{
-  override def edgeO(pd: Option[RsParam], pu: ExuConfig, p: config.Parameters, sourceInfo: SourceInfo): ExuConfig = pu
-  override def bundleO(eo: ExuConfig): IssueBundle = new IssueBundle
+object ExuComplexIssueOutwardNodeImpl extends OutwardNodeImp[RsParam, ExuConfig, (RsParam, ExuConfig), IssueBundle]{
+  override def edgeO(pd: RsParam, pu: ExuConfig, p: config.Parameters, sourceInfo: SourceInfo): (RsParam, ExuConfig) = (pd,pu)
+  override def bundleO(eo: (RsParam, ExuConfig)): IssueBundle = new IssueBundle(eo._1.bankNum, eo._1.entriesNum)
 }
 class ExuComplexIssueNode(implicit valName: ValName) extends
   MixedNexusNode(inner = ExuComplexIssueInwardNodeImpl, outer = ExuComplexIssueOutwardNodeImpl)(
-    dFn = {p:Seq[Option[RsParam]] => None},
+    dFn = {p:Seq[RsParam] => p.head},
     uFn = {p:Seq[ExuConfig] => ExuComplexParam(p.head.id, p)}
   )
 

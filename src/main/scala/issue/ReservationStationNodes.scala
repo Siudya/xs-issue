@@ -8,10 +8,12 @@ import common.MicroOp
 import execute.exucx.ExuComplexParam
 
 
-object RsIssueNodeImpl extends SimpleNodeImp[RsParam, Seq[ExuComplexParam], Seq[ExuComplexParam], Vec[IssueBundle]]{
-  override def edge(pd: RsParam, pu: Seq[ExuComplexParam], p: config.Parameters, sourceInfo: SourceInfo): Seq[ExuComplexParam] = pu
-  override def bundle(e: Seq[ExuComplexParam]): Vec[IssueBundle] = Vec(e.length, new IssueBundle)
-  override def render(e: Seq[ExuComplexParam]): RenderedEdge = RenderedEdge("#00ff00", "Integer Issue")
+object RsIssueNodeImpl extends SimpleNodeImp[RsParam, Seq[ExuComplexParam], (RsParam, Seq[ExuComplexParam]), Vec[IssueBundle]]{
+  override def edge(pd: RsParam, pu: Seq[ExuComplexParam], p: config.Parameters, sourceInfo: SourceInfo): (RsParam, Seq[ExuComplexParam]) = (pd,pu)
+  override def bundle(e: (RsParam, Seq[ExuComplexParam])): Vec[IssueBundle] = Vec(e._2.length, new IssueBundle(e._1.bankNum, e._1.entriesNum))
+  override def render(e: (RsParam, Seq[ExuComplexParam])): RenderedEdge = {
+    RenderedEdge("#00ff00", e._1.TypeName + "Issue")
+  }
 }
 object RsDispatchNodeImpl extends SimpleNodeImp[Option[DispatchParam], DispatchParam, DispatchParam, Vec[DecoupledIO[MicroOp]]] {
   override def edge(pd: Option[DispatchParam], pu: DispatchParam, p: config.Parameters, sourceInfo: SourceInfo): DispatchParam = pu

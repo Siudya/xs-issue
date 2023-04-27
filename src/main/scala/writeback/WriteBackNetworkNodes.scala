@@ -9,13 +9,12 @@ import execute.exu.ExuConfig
 import issue.IssueBundle
 
 object WriteBackSinkType{
-  def intRf = 0
-  def fpRf = 1
+  def regFile = 0
   def rob = 3
   def intRs = 4
   def memRs = 5
   def fpRs = 6
-  private def rfList = Seq(intRf, fpRf)
+  private def rfList = Seq(regFile)
   private def rsList = Seq(intRs, memRs, fpRs)
   def isRf(in:Int) = rfList.contains(in)
   def isRs(in:Int) = rsList.contains(in)
@@ -26,15 +25,14 @@ case class WriteBackSinkParam
   val name: String,
   val sinkType: Int,
 ){
-  def isIntRf = sinkType == WriteBackSinkType.intRf
-  def isFpRf = sinkType == WriteBackSinkType.fpRf
+  def isRegFile = sinkType == WriteBackSinkType.regFile
   def isRob = sinkType == WriteBackSinkType.rob
   def isIntRs = sinkType == WriteBackSinkType.intRs
   def isMemRs = sinkType == WriteBackSinkType.memRs
   def isFpRs = sinkType == WriteBackSinkType.fpRs
-  def isLegal = isIntRf || isFpRf ||isRob ||isIntRs ||isMemRs ||isFpRs
-  def needWakeup = isIntRs || isMemRs || isFpRs
-  def needWriteback = isIntRf || isFpRf || isRob
+  def isLegal = isRegFile ||isRob ||isIntRs ||isMemRs ||isFpRs
+  def needWakeup = isIntRs || isMemRs || isFpRs || isRob
+  def needWriteback = isRegFile
 }
 
 object WriteBackNetworkNodeInwardImpl extends InwardNodeImp[ExuConfig, Option[ExuConfig], ExuConfig, Valid[ExuOutput]]{
@@ -46,10 +44,8 @@ object WriteBackNetworkNodeOutwardImpl extends OutwardNodeImp[Seq[ExuConfig], Wr
   override def edgeO(pd: Seq[ExuConfig], pu: WriteBackSinkParam, p: config.Parameters, sourceInfo: SourceInfo): (WriteBackSinkParam, Seq[ExuConfig]) = {
     require(pu.isLegal)
 
-    val resPd = if (pu.isIntRf) {
-      pd.filter(_.writeIntRf)
-    } else if (pu.isFpRf) {
-      pd.filter(_.writeFpRf)
+    val resPd = if (pu.isRegFile) {
+      pd.filter(cfg => cfg.writeIntRf || cfg.writeFpRf || cfg.writeVecRf )
     } else if (pu.isIntRs) {
       pd.filter(_.wakeUpIntRs)
     } else if (pu.isMemRs) {

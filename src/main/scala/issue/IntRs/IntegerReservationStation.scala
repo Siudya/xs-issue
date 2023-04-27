@@ -25,9 +25,9 @@ class IntegerReservationStation(bankNum:Int, entryNum:Int)(implicit p: Parameter
 class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsParam) extends LazyModuleImp(outer) with XSParam {
   require(param.bankNum == 4)
   require(param.entriesNum % param.bankNum == 0)
-  private val issue = outer.issueNode.out.head._1 zip outer.issueNode.out.head._2
+  private val issue = outer.issueNode.out.head._1 zip outer.issueNode.out.head._2._2
   println("Floating Reservation Issue Ports Config:")
-  outer.issueNode.out.head._2.foreach(cfg => println(cfg))
+  outer.issueNode.out.head._2._2.foreach(cfg => println(cfg))
   private val wbIn = outer.wakeupNode.in.head
   private val wakeup = wbIn._1.zip(wbIn._2)
   issue.foreach(elm => elm._2.exuConfigs.foreach(elm0 => require(ExuType.intTypes.contains(elm0.exuType))))
@@ -189,8 +189,8 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
       issueDriver.io.enq.bits.fmaMidStateIssue.valid := false.B
       issueDriver.io.enq.bits.fmaMidStateIssue.bits := DontCare
       issueDriver.io.enq.bits.fmaWaitForAdd := false.B
-      issueDriver.io.enq.bits.bankIdxOH := DontCare
-      issueDriver.io.enq.bits.entryIdxOH := DontCare
+      issueDriver.io.enq.bits.bankIdxOH := finalSelectInfo.bits.bankIdxOH
+      issueDriver.io.enq.bits.entryIdxOH := finalSelectInfo.bits.entryIdxOH
 
       iss._1.issue.valid := issueDriver.io.deq.valid
       iss._1.issue.bits.uop := issueDriver.io.deq.bits.uop
@@ -198,6 +198,8 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
       iss._1.fmaMidState.in.valid := false.B
       iss._1.fmaMidState.in.bits := DontCare
       iss._1.fmaMidState.waitForAdd := false.B
+      iss._1.rsIdx.bankIdxOH := issueDriver.io.deq.bits.bankIdxOH
+      iss._1.rsIdx.entryIdxOH := issueDriver.io.deq.bits.entryIdxOH
       issueDriver.io.deq.ready := iss._1.issue.ready
     }
   }

@@ -14,6 +14,10 @@ object ExuType{
   def fmac = 8
   def fdiv = 9
   def i2f = 10
+  def vred = 11
+  def vmisc = 12
+  def vfp = 13
+  def vint = 14
 
   private val mapping = Map(
     jmp -> "jmp",
@@ -26,12 +30,17 @@ object ExuType{
     fmisc -> "fmisc",
     fmac -> "fmac",
     fdiv -> "fdiv",
-    i2f -> "i2f"
+    i2f -> "i2f",
+    vred -> "vred",
+    vmisc -> "vmisc",
+    vfp -> "vfp",
+    vint -> "vint"
   )
 
   def intTypes: Seq[Int] = Seq(jmp, alu, mul, div, i2f)
   def memTypes: Seq[Int] = Seq(load, sta, std)
   def fpTypes: Seq[Int] = Seq(fmisc, fmac, fdiv)
+  def vecTypes: Seq[Int] = Seq(vred, vmisc, vfp, vint)
   def typeToString(in:Int):String = mapping(in)
 }
 
@@ -59,6 +68,7 @@ case class ExuConfig
   val isIntType = ExuType.intTypes.contains(exuType)
   val isMemType = ExuType.memTypes.contains(exuType)
   val isFpType = ExuType.fpTypes.contains(exuType)
+  val isVecType = ExuType.vecTypes.contains(exuType)
 
   override def toString = s"\n\t${name}: srcNum: ${srcNum} Type: ${ExuType.typeToString(exuType)} " +
     "\n\t\t Functions Units: " + fuConfigs.map(_.toString + " ").reduce(_++_)

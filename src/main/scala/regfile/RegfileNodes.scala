@@ -1,41 +1,46 @@
 package regfile
 import chipsalliance.rocketchip.config
-import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.diplomacy.{MixedNexusNode, _}
 import chisel3._
 import chisel3.internal.sourceinfo.SourceInfo
 import execute.exucx.ExuComplexParam
 import issue.{IssueBundle, RsParam}
 
-object RegfileInwardImpl extends InwardNodeImp[RsParam,Seq[ExuComplexParam],Seq[ExuComplexParam],Vec[IssueBundle]]{
+object RegFileTopInNodeInwardImpl extends InwardNodeImp[RsParam,Seq[ExuComplexParam],(RsParam, Seq[ExuComplexParam]),Vec[IssueBundle]]{
 
-  override def edgeI(pd: RsParam, pu: Seq[ExuComplexParam], p: config.Parameters, sourceInfo: SourceInfo): Seq[ExuComplexParam] = {
+  override def edgeI(pd: RsParam, pu: Seq[ExuComplexParam], p: config.Parameters, sourceInfo: SourceInfo): (RsParam, Seq[ExuComplexParam]) = {
     require(pd.isLegal)
     if(pd.isIntRs){
-      pu.filter(_.isIntType)
+      (pd, pu.filter(_.isIntType))
     } else if(pd.isMemRs) {
-      pu.filter(_.isMemType)
+      (pd, pu.filter(_.isMemType))
+    } else if(pd.isVecRs) {
+      (pd, pu.filter(_.isVecType))
     } else {
-      pu.filter(_.isFpType)
+      (pd, pu.filter(_.isFpType))
     }
   }
-
-  override def bundleI(ei: Seq[ExuComplexParam]): Vec[IssueBundle] = Vec(ei.length, new IssueBundle)
-
-  override def render(e: Seq[ExuComplexParam]): RenderedEdge = {
-    val edgeName = if(e.head.isIntType)"Int" else if(e.head.isFpType) "Fp" else "Mem"
-    RenderedEdge("#0000ff", edgeName + "Issue")
+  override def bundleI(ei: (RsParam, Seq[ExuComplexParam])): Vec[IssueBundle] = Vec(ei._2.length, new IssueBundle(ei._1.bankNum, ei._1.entriesNum))
+  override def render(e: (RsParam, Seq[ExuComplexParam])): RenderedEdge = RenderedEdge("#0000ff", e._1.TypeName + "Issue")
+}
+object RegFileTopInNodeOutwardImpl extends OutwardNodeImp[Seq[RsParam], ExuComplexParam, (RsParam, ExuComplexParam), IssueBundle]{
+  override def edgeO(pd: Seq[RsParam], pu: ExuComplexParam, p: config.Parameters, sourceInfo: SourceInfo): (RsParam, ExuComplexParam) = {
+    require(pu.isFpType || pu.isVecType || pu.isIntType || pu.isMemType)
+    if(pu.isFpType){
+      (pd.filter(_.isFpRs).head, pu)
+    } else if(pu.isVecType) {
+      (pd.filter(_.isVecRs).head, pu)
+    } else if (pu.isIntType) {
+      (pd.filter(_.isIntRs).head, pu)
+    } else {
+      (pd.filter(_.isMemRs).head, pu)
+    }
   }
-}
-object RegfileOutwardImpl extends OutwardNodeImp[Option[RsParam],ExuComplexParam,ExuComplexParam,IssueBundle]{
-
-  override def edgeO(pd: Option[RsParam], pu: ExuComplexParam, p: config.Parameters, sourceInfo: SourceInfo): ExuComplexParam = pu
-
-  override def bundleO(eo: ExuComplexParam): IssueBundle = new IssueBundle
+  override def bundleO(eo: (RsParam, ExuComplexParam)): IssueBundle = new IssueBundle(eo._1.bankNum, eo._1.entriesNum)
 }
 
-class RegfileIssueNode(implicit valName: ValName)
-  extends MixedNexusNode(
-    inner = RegfileInwardImpl, outer = RegfileOutwardImpl
-  )(
-    {p:Seq[RsParam] => None}, {p:Seq[ExuComplexParam] =>p}
-  )
+class RegFileTopInNode(implicit valName: ValName) extends MixedNexusNode(
+  inner = RegFileTopInNodeInwardImpl, outer = RegFileTopInNodeOutwardImpl
+)(
+  { pd => pd }, { pu => pu }
+)

@@ -6,13 +6,13 @@ import chisel3.util._
 import common.{ExuInput, ExuOutput}
 import freechips.rocketchip.diplomacy._
 import issue.{IssueBundle, RsParam}
-object ExuInwardImpl extends SimpleNodeImp[Option[RsParam],ExuConfig,ExuConfig,IssueBundle]{
-  override def edge(pd: Option[RsParam], pu: ExuConfig, p: config.Parameters, sourceInfo: SourceInfo) = pu
-  override def bundle(e: ExuConfig): IssueBundle = new IssueBundle
-  override def render(e: ExuConfig) = RenderedEdge("#00ff00", e.name)
+object ExuInwardImpl extends SimpleNodeImp[RsParam,ExuConfig,(RsParam, ExuConfig),IssueBundle]{
+  override def edge(pd: RsParam, pu: ExuConfig, p: config.Parameters, sourceInfo: SourceInfo):(RsParam, ExuConfig) = (pd,pu)
+  override def bundle(e: (RsParam, ExuConfig)): IssueBundle = new IssueBundle(e._1.bankNum, e._1.entriesNum)
+  override def render(e: (RsParam, ExuConfig)) = RenderedEdge("#00ff00", e._2.name)
 }
 object ExuOutwardImpl extends SimpleNodeImp[ExuConfig, Option[ExuConfig],ExuConfig,Valid[ExuOutput]]{
-  override def edge(pd: ExuConfig, pu: Option[ExuConfig], p: config.Parameters, sourceInfo: SourceInfo) = pd
+  override def edge(pd: ExuConfig, pu: Option[ExuConfig], p: config.Parameters, sourceInfo: SourceInfo):ExuConfig = pd
   override def bundle(eo: ExuConfig): Valid[ExuOutput] = Valid(new ExuOutput)
   override def render(e: ExuConfig) = RenderedEdge("#0000ff", e.name)
 }

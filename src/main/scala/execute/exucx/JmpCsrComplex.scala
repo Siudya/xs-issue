@@ -16,7 +16,7 @@ class JmpCsrComplex(id: Int, bypassNum:Int)(implicit p:Parameters) extends Basic
       val fenceio = new FenceIO
     })
     private val issueIn = issueNode.in.head._1
-    private val issueJmp = issueNode.out.filter(_._2.exuType == ExuType.jmp).head._1
+    private val issueJmp = issueNode.out.filter(_._2._2.exuType == ExuType.jmp).head._1
     issueJmp <> issueIn
     jmp.module.io.bypassIn := bypassIn
     jmp.module.redirectIn := redirectIn

@@ -18,8 +18,8 @@ class AluI2fComplex(id: Int, bypassNum:Int)(implicit p:Parameters) extends Basic
     require(issueNode.in.length == 1)
     require(issueNode.out.length == 2)
     private val issueIn = issueNode.in.head._1
-    private val issueAlu = issueNode.out.filter(_._2.exuType == ExuType.alu).head._1
-    private val issueI2f = issueNode.out.filter(_._2.exuType == ExuType.i2f).head._1
+    private val issueAlu = issueNode.out.filter(_._2._2.exuType == ExuType.alu).head._1
+    private val issueI2f = issueNode.out.filter(_._2._2.exuType == ExuType.i2f).head._1
 
     issueAlu <> issueIn
     alu.module.io.bypassIn := bypassIn
@@ -31,7 +31,7 @@ class AluI2fComplex(id: Int, bypassNum:Int)(implicit p:Parameters) extends Basic
 
     issueIn.fuInFire := DontCare
     issueIn.issue.ready := Mux(issueIn.issue.bits.uop.ctrl.fuType === FuType.alu, issueAlu.issue.ready, issueI2f.issue.ready)
-    private val issueFuHit = issueNode.in.head._2.exuConfigs.flatMap(_.fuConfigs).map(_.fuType === issueIn.issue.bits.uop.ctrl.fuType).reduce(_ | _)
+    private val issueFuHit = issueNode.in.head._2._2.exuConfigs.flatMap(_.fuConfigs).map(_.fuType === issueIn.issue.bits.uop.ctrl.fuType).reduce(_ | _)
     xs_assert(Mux(issueIn.issue.valid, issueFuHit, true.B))
   }
 }
