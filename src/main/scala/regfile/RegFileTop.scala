@@ -47,14 +47,12 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
       sink.en := source.valid && !source.bits.uop.robIdx.needFlush(io.redirect)
       sink.addr := source.bits.uop.pdest
       sink.data := source.bits.data
-      sink.mask := (-1).S((XLEN / 8).W).asUInt
     })
 
     fpRf.io.extraWrite.zip(fmacFeedbacks.map(_.fmaMidState.out)).foreach({case(sink, source) =>
       sink.en := source.valid
       sink.addr := source.bits.pdest
       sink.data := source.bits.midResult.asUInt(XLEN - 1, 0)
-      sink.mask := (-1).S((XLEN / 8).W).asUInt
     })
 
     private var intRfReadIdx = 0
@@ -68,31 +66,11 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
       val bi = in._1
       val bo = out._1
       prefix(s"${exuComplexParam.name}_${exuComplexParam.id}") {
-        val issueValidReg = RegInit(false.B)
-        val issueExuInReg = Reg(new ExuInput)
-        val midResultReg = Reg(Valid(new FMAMidResult))
-        val fmaWaitAdd = Reg(Bool())
-
         val exuInBundle = WireInit(bi.issue.bits)
         val midResultBundle = WireInit(bi.fmaMidState.in)
         exuInBundle.src := DontCare
 
-        val allowPipe = !issueValidReg || bo.issue.fire
-        bi.fuInFire := bo.issue.fire
-        bo.issue.valid := issueValidReg
-        bo.issue.bits := issueExuInReg
-        bo.fmaMidState.in := midResultReg
-        bo.fmaMidState.waitForAdd := fmaWaitAdd
-
         val lpvNeedCancel = bi.issue.bits.uop.lpv.zip(io.earlyWakeUpCancel).map({case(l,c) => l(1) & c}).reduce(_|_)
-        when(allowPipe){
-          issueValidReg := bi.issue.valid && !bi.issue.bits.uop.robIdx.needFlush(io.redirect) && !lpvNeedCancel
-        }
-        when(allowPipe && bi.issue.valid){
-          issueExuInReg := exuInBundle
-          midResultReg := midResultBundle
-          fmaWaitAdd := bi.fmaMidState.waitForAdd
-        }
         if (exuComplexParam.isIntType) {
           val srcNum = exuComplexParam.intSrcNum
           for((d, addr) <- exuInBundle.src.zip(exuInBundle.uop.psrc).take(srcNum)){
@@ -120,6 +98,26 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
           val midResultLo = exuInBundle.src(0)
           val midResultHi = bi.fmaMidState.in.bits.asUInt(midResultWidth - 1, XLEN)
           midResultBundle.bits := Cat(midResultHi, midResultLo).asTypeOf(new FMAMidResult)
+        }
+
+        val issueValidReg = RegInit(false.B)
+        val issueExuInReg = Reg(new ExuInput)
+        val midResultReg = Reg(Valid(new FMAMidResult))
+        val fmaWaitAdd = Reg(Bool())
+
+        val allowPipe = !issueValidReg || bo.issue.fire
+        bi.fuInFire := bo.issue.fire
+        bo.issue.valid := issueValidReg
+        bo.issue.bits := issueExuInReg
+        bo.fmaMidState.in := midResultReg
+        bo.fmaMidState.waitForAdd := fmaWaitAdd
+        when(allowPipe) {
+          issueValidReg := bi.issue.valid && !bi.issue.bits.uop.robIdx.needFlush(io.redirect) && !lpvNeedCancel
+        }
+        when(allowPipe && bi.issue.valid) {
+          issueExuInReg := exuInBundle
+          midResultReg := midResultBundle
+          fmaWaitAdd := bi.fmaMidState.waitForAdd
         }
       }
     }

@@ -7,10 +7,10 @@ import freechips.rocketchip.config.Parameters
 import issue.RsIdx
 import xs.utils.Assertion.xs_assert
 
-class WritePort(dataWidth:Int) extends XSBundle {
+class WritePort(dataWidth:Int, hasMask:Boolean) extends XSBundle {
   val addr = Input(UInt(MaxRegfileIdxWidth.W))
   val data = Input(UInt(dataWidth.W))
-  val mask = Input(UInt((dataWidth / 8).W))
+  val mask = if(hasMask) Some(Input(UInt((dataWidth / 8).W))) else None
   val en = Input(Bool())
 }
 
@@ -19,40 +19,56 @@ class ReadPort(dataWidth:Int) extends XSBundle {
   val data = Output(UInt(dataWidth.W))
 }
 
-class GenericRegFile(entriesNum:Int, writeBackNum:Int, bypassNum:Int, readPortNum:Int, dataWidth:Int, moduleName:String, extraWriteNum:Int = 0)(implicit p: Parameters) extends XSModule{
+class GenericRegFile(entriesNum:Int, writeBackNum:Int, bypassNum:Int, readPortNum:Int, dataWidth:Int, moduleName:String, extraWriteNum:Int = 0, hasMask:Boolean = false)(implicit p: Parameters) extends XSModule{
   val io = IO(new Bundle{
     val read = Vec(readPortNum, new ReadPort(dataWidth))
-    val write = Vec(writeBackNum, new WritePort(dataWidth))
-    val bypassWrite = Vec(bypassNum, new WritePort(dataWidth))
-    val extraWrite = Vec(extraWriteNum, new WritePort(dataWidth))
+    val write = Vec(writeBackNum, new WritePort(dataWidth, hasMask))
+    val bypassWrite = Vec(bypassNum, new WritePort(dataWidth, hasMask))
+    val extraWrite = Vec(extraWriteNum, new WritePort(dataWidth, hasMask))
   })
   override val desiredName = moduleName
   println(s"${moduleName} read ports: ${readPortNum}")
 
-  private val bankNum = dataWidth / 8
-
-  private val mems = List.tabulate(bankNum)(_ => Mem(entriesNum, UInt(XLEN.W)))
-  (io.write ++ io.bypassWrite ++ io.extraWrite).foreach(w => {
-    val writeData = Seq.tabulate(bankNum)(idx => w.data(idx * 8 + 7, idx * 8))
-    val maskEn = w.mask.asBools
-      when(w.en){
-        mems.zip(writeData).zip(maskEn).foreach({case((m, d), en) =>
-          when(en) {
-            m(w.addr) := d
-          }
-        })
+  if(hasMask) {
+    val bankNum = dataWidth / 8
+    val mem = Mem(entriesNum, Vec(bankNum, UInt(8.W)))
+    (io.write ++ io.bypassWrite ++ io.extraWrite).foreach(w => {
+      val writeData = Wire(Vec(bankNum, UInt(8.W)))
+      writeData.zipWithIndex.foreach({ case (d, i) => d := w.data(i * 8 + 7, i * 8) })
+      when(w.en) {
+        mem.write(w.addr, writeData, w.mask.get.asBools)
       }
-  })
+    })
 
-  io.read.foreach(r => {
-    val memReadData = Cat(mems.map(_(r.addr)).reverse)
-    if(bypassNum > 0) {
-      val bypassHits = io.bypassWrite.map(w => w.en && w.addr === r.addr)
-      val bypassData = Mux1H(bypassHits, io.bypassWrite.map(_.data))
-      val bypassValid = bypassHits.reduce(_ | _)
-      r.data := Mux(bypassValid, bypassData, memReadData)
-    } else {
-      r.data := memReadData
-    }
-  })
+    io.read.foreach(r => {
+      val memReadData = Cat(mem(r.addr).reverse)
+      if (bypassNum > 0) {
+        val bypassHits = io.bypassWrite.map(w => w.en && w.addr === r.addr)
+        val bypassData = Mux1H(bypassHits, io.bypassWrite.map(_.data))
+        val bypassValid = bypassHits.reduce(_ | _)
+        r.data := Mux(bypassValid, bypassData, memReadData)
+      } else {
+        r.data := memReadData
+      }
+    })
+  } else {
+    val mem = Mem(entriesNum, UInt(dataWidth.W))
+    (io.write ++ io.bypassWrite ++ io.extraWrite).foreach(w => {
+      when(w.en) {
+        mem.write(w.addr, w.data)
+      }
+    })
+
+    io.read.foreach(r => {
+      val memReadData = mem(r.addr)
+      if (bypassNum > 0) {
+        val bypassHits = io.bypassWrite.map(w => w.en && w.addr === r.addr)
+        val bypassData = Mux1H(bypassHits, io.bypassWrite.map(_.data))
+        val bypassValid = bypassHits.reduce(_ | _)
+        r.data := Mux(bypassValid, bypassData, memReadData)
+      } else {
+        r.data := memReadData
+      }
+    })
+  }
 }
