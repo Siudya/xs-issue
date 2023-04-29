@@ -22,7 +22,7 @@ case class ExuComplexParam
   val hasFmac: Boolean = exuConfigs.map(_.exuType == ExuType.fmac).reduce(_ || _)
   val hasFmisc: Boolean = exuConfigs.map(_.exuType == ExuType.fmisc).reduce(_ || _)
   val hasFdiv: Boolean = exuConfigs.map(_.exuType == ExuType.fdiv).reduce(_ || _)
-  val hasLoad: Boolean = exuConfigs.map(_.exuType == ExuType.load).reduce(_ || _)
+  val hasLoad: Boolean = exuConfigs.map(_.exuType == ExuType.ldu).reduce(_ || _)
   val hasSta: Boolean = exuConfigs.map(_.exuType == ExuType.sta).reduce(_ || _)
   val hasStd: Boolean = exuConfigs.map(_.exuType == ExuType.std).reduce(_ || _)
   val hasVred:Boolean = exuConfigs.map(_.exuType == ExuType.vred).reduce(_ || _)

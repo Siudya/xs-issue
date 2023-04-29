@@ -41,10 +41,18 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
     private val intRf = Module(new GenericRegFile(GprEntriesNum, writeIntRf.length, writeIntRfBypass.length, needIntSrc.map(_._2.intSrcNum).sum, XLEN, "IntegerRegFile"))
     private val fpRf = Module(new GenericRegFile(FprEntriesNum, writeFpRf.length, writeFpRfBypass.length, needFpSrc.map(_._2.fpSrcNum).sum, XLEN, "FloatingRegFile", fmacFeedbacks.length))
 
-    private val writeBackSinks = intRf.io.write ++ fpRf.io.write ++ intRf.io.bypassWrite ++ fpRf.io.bypassWrite
-    private val writeBackSources = writeIntRf ++ writeFpRf ++ writeIntRfBypass ++ writeFpRfBypass
-    writeBackSinks.zip(writeBackSources.map(_._1)).foreach({case(sink, source) =>
-      sink.en := source.valid && !source.bits.uop.robIdx.needFlush(io.redirect)
+    private val intWriteBackSinks = intRf.io.write ++ intRf.io.bypassWrite
+    private val intWriteBackSources = writeIntRf ++ writeIntRfBypass
+    intWriteBackSinks.zip(intWriteBackSources.map(_._1)).foreach({case(sink, source) =>
+      sink.en := source.valid && !source.bits.uop.robIdx.needFlush(io.redirect) && source.bits.uop.ctrl.rfWen
+      sink.addr := source.bits.uop.pdest
+      sink.data := source.bits.data
+    })
+
+    private val fpWriteBackSinks = fpRf.io.write ++ fpRf.io.bypassWrite
+    private val fpWriteBackSources = writeFpRf ++ writeFpRfBypass
+    fpWriteBackSinks.zip(fpWriteBackSources.map(_._1)).foreach({ case (sink, source) =>
+      sink.en := source.valid && !source.bits.uop.robIdx.needFlush(io.redirect) && source.bits.uop.ctrl.fpWen
       sink.addr := source.bits.uop.pdest
       sink.data := source.bits.data
     })

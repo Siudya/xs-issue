@@ -15,10 +15,10 @@ abstract class BasicStatusArrayEntry(val srcNum:Int, isIntSrc:Boolean) extends X
   val fpWen = Bool()
   val robIdx = new RobPtr
 }
-class MemoryStatusArrayEntry extends BasicStatusArrayEntry(2, true)
 
 class BasicWakeupInfo extends XSBundle{
   val pdest = UInt(MaxRegfileIdxWidth.W)
+  val destType = SrcType()
   val robPtr = new RobPtr
 }
 class WakeUpInfo extends BasicWakeupInfo{

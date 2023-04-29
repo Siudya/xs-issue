@@ -7,7 +7,7 @@ object ExuType{
   def alu = 1
   def mul = 2
   def div = 3
-  def load = 4
+  def ldu = 4
   def sta = 5
   def std = 6
   def fmisc = 7
@@ -24,7 +24,7 @@ object ExuType{
     alu -> "alu",
     mul -> "mul",
     div -> "div",
-    load -> "load",
+    ldu -> "ldu",
     sta -> "sta",
     std -> "std",
     fmisc -> "fmisc",
@@ -38,12 +38,12 @@ object ExuType{
   )
 
   def intTypes: Seq[Int] = Seq(jmp, alu, mul, div, i2f)
-  def memTypes: Seq[Int] = Seq(load, sta, std)
+  def memTypes: Seq[Int] = Seq(ldu, sta, std)
   def fpTypes: Seq[Int] = Seq(fmisc, fmac, fdiv)
   def vecTypes: Seq[Int] = Seq(vred, vmisc, vfp, vint)
   def typeToString(in:Int):String = mapping(in)
-  def bypassIntList: Seq[Int] = Seq(alu, mul, load)
-  def bypassFpList: Seq[Int] = Seq(load)
+  def bypassIntList: Seq[Int] = Seq(alu, mul, ldu)
+  def bypassFpList: Seq[Int] = Seq(ldu)
 }
 
 case class ExuConfig

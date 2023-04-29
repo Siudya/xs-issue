@@ -178,20 +178,23 @@ object BrType {
 }
 
 object SrcType {
-  def reg = "b00".U
-  def pc = "b01".U
-  def imm = "b01".U
-  def fp = "b10".U
+  def reg = "b000".U
+  def pc = "b001".U
+  def imm = "b001".U
+  def fp = "b010".U
+  def vec: UInt = "b011".U
+  def default: UInt = "b100".U
   def DC = imm // Don't Care
   def X = BitPat("b??")
   def isReg(srcType: UInt) = srcType === reg
   def isPc(srcType: UInt) = srcType === pc
   def isImm(srcType: UInt) = srcType === imm
-  def isFp(srcType: UInt) = srcType(1)
-  def isPcOrImm(srcType: UInt) = srcType(0)
-  def isRegOrFp(srcType: UInt) = !srcType(0)
-  def regIsFp(srcType: UInt) = srcType(1)
-  def apply() = UInt(2.W)
+  def isFp(srcType: UInt) = srcType === fp
+  def isVec(srcType: UInt) = srcType === vec
+  def isPcOrImm(srcType: UInt) = srcType === imm
+  def isRegOrFp(srcType: UInt):Bool = srcType === reg || srcType === fp
+  def regIsFp(srcType: UInt) = srcType === fp
+  def apply() = UInt(3.W)
 }
 
 class PreDecodeInfo extends Bundle {  // 8 bit

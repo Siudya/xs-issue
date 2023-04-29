@@ -2,7 +2,7 @@ package execute.exu
 import chisel3.util._
 import chisel3._
 import chipsalliance.rocketchip.config.Parameters
-import common.{ExuInput, ExuOutput, MicroOp, Redirect}
+import common.{ExuInput, ExuOutput, MicroOp, Redirect, SrcType}
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import issue.IssueBundle
 import xs.utils.Assertion.xs_assert
@@ -26,9 +26,9 @@ abstract class BasicExuImpl(outer:BasicExu) extends LazyModuleImp(outer){
       val bypassData = bypass.map(_.bits.data)
       val bypassSrc0Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.issue.bits.uop.psrc(0))
       val bypassSrc1Hits = bypass.map(elm => elm.valid && elm.bits.uop.pdest === issuePort.issue.bits.uop.psrc(1))
-      val bypassSrc0Valid = Cat(bypassSrc0Hits).orR
+      val bypassSrc0Valid = Cat(bypassSrc0Hits).orR && issuePort.issue.bits.uop.ctrl.srcType(0) === SrcType.reg
       val bypassSrc0Data = Mux1H(bypassSrc0Hits, bypassData)
-      val bypassSrc1Valid = Cat(bypassSrc1Hits).orR
+      val bypassSrc1Valid = Cat(bypassSrc1Hits).orR && issuePort.issue.bits.uop.ctrl.srcType(1) === SrcType.reg
       val bypassSrc1Data = Mux1H(bypassSrc1Hits, bypassData)
       xs_assert(PopCount(Cat(bypassSrc0Hits)) === 1.U || Cat(bypassSrc0Hits) === 0.U)
       xs_assert(PopCount(Cat(bypassSrc1Hits)) === 1.U || Cat(bypassSrc1Hits) === 0.U)

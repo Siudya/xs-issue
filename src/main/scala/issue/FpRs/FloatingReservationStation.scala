@@ -3,7 +3,7 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.experimental.prefix
 import chisel3.util._
-import common.{FuType, MicroOp, Redirect, XSParam}
+import common.{FuType, MicroOp, Redirect, SrcType, XSParam}
 import execute.exucx.ExuComplexParam
 import execute.exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, ValName}
@@ -60,6 +60,7 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
     wkp.bits.pdest := elm.bits.uop.pdest
     wkp.bits.robPtr := elm.bits.uop.robIdx
     wkp.bits.lpv := 0.U.asTypeOf(wkp.bits.lpv)
+    wkp.bits.destType := Mux(elm.bits.uop.ctrl.fpWen, SrcType.fp, SrcType.default)
     wkp
   }))
   private val rsBankSeq = Seq.tabulate(param.bankNum)( _ => {

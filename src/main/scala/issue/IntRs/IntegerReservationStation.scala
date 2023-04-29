@@ -3,7 +3,7 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.experimental.prefix
 import chisel3.util._
-import common.{MicroOp, Redirect, XSParam}
+import common.{MicroOp, Redirect, SrcType, XSParam}
 import execute.exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, ValName}
 import execute.fu.fpu.FMAMidResult
@@ -72,6 +72,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     wkp.bits.pdest := elm.bits.uop.pdest
     wkp.bits.robPtr := elm.bits.uop.robIdx
     wkp.bits.lpv := 0.U.asTypeOf(wkp.bits.lpv)
+    wkp.bits.destType := Mux(elm.bits.uop.ctrl.rfWen, SrcType.reg, SrcType.default)
     wkp
   }))
   private val rsBankSeq = Seq.tabulate(param.bankNum)( _ => {

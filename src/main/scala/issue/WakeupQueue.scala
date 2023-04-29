@@ -1,7 +1,7 @@
 package issue
 import chisel3._
 import chisel3.util._
-import common.Redirect
+import common.{Redirect, SrcType}
 class WakeupQueue(latency:Int) extends Module{
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
@@ -30,6 +30,7 @@ object WakeupQueue {
       wakeupQueue.io.in.bits.lpv := in.bits.info.lpv
       wakeupQueue.io.in.bits.robPtr := in.bits.info.robPtr
       wakeupQueue.io.in.bits.pdest := in.bits.info.pdest
+      wakeupQueue.io.in.bits.destType := Mux(in.bits.info.fpWen, SrcType.fp, Mux(in.bits.info.rfWen, SrcType.reg, SrcType.default))
       wakeupQueue.io.redirect := redirect
       res := wakeupQueue.io.out
     } else {
@@ -37,6 +38,7 @@ object WakeupQueue {
       res.bits.lpv := in.bits.info.lpv
       res.bits.robPtr := in.bits.info.robPtr
       res.bits.pdest := in.bits.info.pdest
+      res.bits.destType := Mux(in.bits.info.fpWen, SrcType.fp, Mux(in.bits.info.rfWen, SrcType.reg, SrcType.default))
     }
     res
   }

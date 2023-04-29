@@ -89,7 +89,7 @@ class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int) ext
   //Start of wake up
   private val pregMatch = io.entry.bits.psrc
     .zip(io.entry.bits.srcType)
-    .map(p => (io.wakeup ++ io.loadEarlyWakeup).map(elm => (elm.bits.pdest === p._1) && elm.valid && p._2 === SrcType.fp))
+    .map(p => (io.wakeup ++ io.loadEarlyWakeup).map(elm => (elm.bits.pdest === p._1) && elm.valid && p._2 === elm.bits.destType))
   for((n, v) <- miscNext.bits.srcState zip pregMatch){
     val shouldUpdateSrcState = Cat(v).orR
     when(shouldUpdateSrcState){
