@@ -331,6 +331,8 @@ trait XSParam{
   val AsidLength = 16
   val FtqSize = 64
   val maxEntryInOneRsBank = 16
+  val PredictWidth = 16
+  val instOffsetBits = 1
 }
 class XSBundle extends Bundle with XSParam
 class XSModule extends Module with XSParam
@@ -410,5 +412,21 @@ case class Imm_LUI_LOAD() {
     val loadImmLen = Imm_I().len
     val imm_u = Cat(uop.psrc(1), uop.psrc(0), uop.ctrl.imm(ImmUnion.maxLen - 1, loadImmLen))
     Imm_U().do_toImm32(imm_u)
+  }
+}
+
+class Ftq_RF_Components extends XSBundle{
+  val startAddr = UInt(VAddrBits.W)
+  val nextLineAddr = UInt(VAddrBits.W)
+  val isNextMask = Vec(16, Bool())
+  val fallThruError = Bool()
+
+  def getPc(offset: UInt) = {
+    def getHigher(pc: UInt) = pc(VAddrBits - 1, log2Ceil(PredictWidth) + instOffsetBits + 1)
+
+    def getOffset(pc: UInt) = pc(log2Ceil(PredictWidth) + instOffsetBits, instOffsetBits)
+
+    Cat(getHigher(Mux(isNextMask(offset) && startAddr(log2Ceil(PredictWidth) + instOffsetBits), nextLineAddr, startAddr)),
+      getOffset(startAddr) + offset, 0.U(instOffsetBits.W))
   }
 }

@@ -31,5 +31,11 @@ object RsDispatchNodeImpl extends SimpleNodeImp[Option[DispatchParam], DispatchP
   override def bundle(e: DispatchParam): Vec[DecoupledIO[MicroOp]] = Vec(e.width, DecoupledIO(new MicroOp))
   override def render(e: DispatchParam): RenderedEdge = RenderedEdge("#ff0000", e.name)
 }
+
 class RsIssueNode(param:RsParam)(implicit valName: ValName) extends SourceNode(RsIssueNodeImpl)(Seq(param))
+
 class RsDispatchNode(paramSeq:Seq[DispatchParam])(implicit valName: ValName) extends SinkNode(RsDispatchNodeImpl)(paramSeq)
+
+class BusyTableNode(implicit valName: ValName) extends AdapterNode(RsDispatchNodeImpl)({p => p}, {p => p})
+
+class DqDispatchNode(implicit valName: ValName) extends SourceNode(RsDispatchNodeImpl)(Seq(None))

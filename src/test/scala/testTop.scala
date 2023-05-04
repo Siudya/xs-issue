@@ -3,7 +3,7 @@ import freechips.rocketchip.diplomacy._
 import xs.utils.Assertion
 import chipsalliance.rocketchip.config.{Config, Field, Parameters}
 import common.{ExuOutput, MicroOp, Redirect}
-import regfile.RegFileTop
+import regfile.{PcMem, PcWritePort, RegFileTop}
 import chisel3._
 import chisel3.util._
 import execute.exu.FenceIO
@@ -24,6 +24,7 @@ class MyConfig extends Config((site, here, up) => {
 })
 
 class TestTop(implicit p:Parameters) extends LazyModule{
+  private val pcMemEntries = 64
   private val integerBlock = LazyModule(new IntegerBlock(2, 1, 1, 1))
   private val floatingBlock = LazyModule(new FloatingBlock(2, 1, 1))
   private val integerReservationStation = LazyModule(new IntegerReservationStation(4, 16))
@@ -52,6 +53,7 @@ class TestTop(implicit p:Parameters) extends LazyModule{
       val loadEarlyWakeup = Input(Vec(2, Valid(new EarlyWakeUpInfo)))
       val earlyWakeUpCancel = Input(Vec(2, Bool()))
       val fenceio = new FenceIO
+      val pcMemWrite = new PcWritePort(log2Ceil(pcMemEntries))
     })
     exuBlocks.foreach(_.module.redirectIn := io.redirectIn)
 
@@ -65,8 +67,14 @@ class TestTop(implicit p:Parameters) extends LazyModule{
     floatingReservationStation.module.io.loadEarlyWakeup := io.loadEarlyWakeup
     floatingReservationStation.module.io.earlyWakeUpCancel := io.earlyWakeUpCancel
 
+    private val pcMem = Module(new PcMem(pcMemEntries, regFile.module.pcReadNum, 1))
+    pcMem.io.write.head := io.pcMemWrite
+
     regFile.module.io.redirect := io.redirectIn
-    regFile.module.io.pcReadData := DontCare
+    pcMem.io.read.zip(regFile.module.io.pcReadFtqIdx).foreach({case(r, addr) => r.addr := addr})
+    regFile.module.io.pcReadData.zip(regFile.module.io.pcReadFtqOffset).zip(pcMem.io.read).foreach({
+      case((data, off), r) => data := r.data.getPc(off)
+    })
 
     integerBlock.module.io.fenceio <> io.fenceio
 

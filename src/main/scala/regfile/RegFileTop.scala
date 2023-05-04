@@ -13,10 +13,11 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
   val writebackNode = new WriteBackSinkNode(WriteBackSinkParam("RegFile Top", WriteBackSinkType.regFile))
 
   lazy val module = new LazyModuleImp(this) with XSParam {
-    private val pcReadNum = issueNode.out.count(_._2._2.hasJmp) * 2 + issueNode.out.count(_._2._2.hasLoad)
+    val pcReadNum:Int = issueNode.out.count(_._2._2.hasJmp) * 2 + issueNode.out.count(_._2._2.hasLoad)
     val io = IO(new Bundle{
       val redirect = Input(Valid(new Redirect))
-      val pcReadAddr = Output(Vec(pcReadNum, UInt(log2Ceil(FtqSize).W)))
+      val pcReadFtqIdx = Output(Vec(pcReadNum, UInt(log2Ceil(FtqSize).W)))
+      val pcReadFtqOffset = Output(Vec(pcReadNum, UInt(PredictWidth.W)))
       val pcReadData = Input(Vec(pcReadNum, UInt(VAddrBits.W)))
       val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
     })
@@ -87,8 +88,10 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
             intRfReadIdx = intRfReadIdx + 1
           }
           if(exuComplexParam.hasJmp){
-            io.pcReadAddr(pcReadPortIdx) := exuInBundle.uop.cf.ftqPtr.value
-            io.pcReadAddr(pcReadPortIdx + 1) := (exuInBundle.uop.cf.ftqPtr + 1.U).value
+            io.pcReadFtqIdx(pcReadPortIdx) := exuInBundle.uop.cf.ftqPtr.value
+            io.pcReadFtqIdx(pcReadPortIdx + 1) := (exuInBundle.uop.cf.ftqPtr + 1.U).value
+            io.pcReadFtqOffset(pcReadPortIdx) := exuInBundle.uop.cf.ftqOffset
+            io.pcReadFtqOffset(pcReadPortIdx + 1) := 0.U
             ImmExtractor(exuComplexParam, exuInBundle, Some(io.pcReadData(pcReadPortIdx)), Some(io.pcReadData(pcReadPortIdx + 1)))
             pcReadPortIdx = pcReadPortIdx + 2
           } else {
