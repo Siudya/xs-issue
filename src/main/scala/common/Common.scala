@@ -6,6 +6,7 @@ import chisel3.util._
 import execute.exu.ExuConfig
 import execute.fu.{FuConfig, FuInput}
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, SignExt, ZeroExt}
+import xs.utils._
 
 class FtqPtr extends CircularQueuePtr[FtqPtr](64)
 class LqPtr extends CircularQueuePtr[LqPtr](80)
@@ -331,6 +332,13 @@ trait XSParam{
   val AsidLength = 16
   val FtqSize = 64
   val maxEntryInOneRsBank = 16
+
+  val loadQueueSize = 80
+  val storeQueueSize = 64
+  val IssQueSize = 16
+  val CommitWidth = 6
+  val TriggerNum = 10
+  val PAddrBits = 36
   val PredictWidth = 16
   val instOffsetBits = 1
 }
@@ -413,6 +421,270 @@ case class Imm_LUI_LOAD() {
     val imm_u = Cat(uop.psrc(1), uop.psrc(0), uop.ctrl.imm(ImmUnion.maxLen - 1, loadImmLen))
     Imm_U().do_toImm32(imm_u)
   }
+}
+
+object RSFeedbackType {
+  val tlbMiss = 0.U(3.W)
+  val mshrFull = 1.U(3.W)
+  val dataInvalid = 2.U(3.W)
+  val bankConflict = 3.U(3.W)
+  val ldVioCheckRedo = 4.U(3.W)
+
+  val feedbackInvalid = 7.U(3.W)
+
+  def apply() = UInt(3.W)
+}
+
+
+class RSFeedbackIO extends XSBundle{
+  // Note: you need to update in implicit Parameters p before imp MemRSFeedbackIO
+  // for instance: MemRSFeedbackIO()(updateP)
+  val feedbackSlow = ValidIO(new RSFeedback()) // dcache miss queue full, dtlb miss
+  val feedbackFast = ValidIO(new RSFeedback()) // bank conflict
+  val rsIdx = Input(UInt(log2Up(IssQueSize).W))
+  val isFirstIssue = Input(Bool())
+}
+
+class RSFeedback extends XSBundle {
+  val rsIdx = UInt(log2Up(IssQueSize).W)
+  val hit = Bool()
+  val flushState = Bool()
+  val sourceType = RSFeedbackType()
+  val dataInvalidSqIdx = new SqPtr
+}
+
+
+class SfenceBundle extends XSBundle {
+  val valid = Bool()
+  val bits = new Bundle {
+    val rs1 = Bool()
+    val rs2 = Bool()
+    val addr = UInt(VAddrBits.W)
+    val asid = UInt(AsidLength.W)
+  }
+
+  override def toPrintable: Printable = {
+    p"valid:0x${Hexadecimal(valid)} rs1:${bits.rs1} rs2:${bits.rs2} addr:${Hexadecimal(bits.addr)}"
+  }
+}
+
+
+class SatpStruct extends Bundle {
+  val mode = UInt(4.W)
+  val asid = UInt(16.W)
+  val ppn  = UInt(44.W)
+}
+
+class TlbCsrBundle extends XSBundle {
+  val satp = new Bundle {
+    val changed = Bool()
+    val mode = UInt(4.W) // TODO: may change number to parameter
+    val asid = UInt(16.W)
+    val ppn = UInt(44.W) // just use PAddrBits - 3 - vpnnLen
+
+    def apply(satp_value: UInt): Unit = {
+      require(satp_value.getWidth == XLEN)
+      val sa = satp_value.asTypeOf(new SatpStruct)
+      mode := sa.mode
+      asid := sa.asid
+      ppn := sa.ppn
+      changed := DataChanged(sa.asid) // when ppn is changed, software need do the flush
+    }
+  }
+  val priv = new Bundle {
+    val mxr = Bool()
+    val sum = Bool()
+    val imode = UInt(2.W)
+    val dmode = UInt(2.W)
+  }
+
+  override def toPrintable: Printable = {
+    p"Satp mode:0x${Hexadecimal(satp.mode)} asid:0x${Hexadecimal(satp.asid)} ppn:0x${Hexadecimal(satp.ppn)} " +
+      p"Priv mxr:${priv.mxr} sum:${priv.sum} imode:${priv.imode} dmode:${priv.dmode}"
+  }
+}
+
+class FenceToSbuffer extends Bundle {
+  val flushSb = Output(Bool())
+  val sbIsEmpty = Input(Bool())
+}
+
+class LsqEnqIO extends XSBundle {
+  val canAccept = Output(Bool())
+  val needAlloc = Vec(4, Input(UInt(2.W)))      //todo ???
+  val req = Vec(4, Flipped(ValidIO(new MicroOp)))
+  val resp = Vec(4, Output(new LSIdx))
+}
+
+class LSIdx extends XSBundle {
+  val lqIdx = new LqPtr
+  val sqIdx = new SqPtr
+}
+
+class ExceptionAddrIO extends XSBundle {
+  val isStore = Input(Bool())
+  val vaddr = Output(UInt(VAddrBits.W))
+}
+
+class RobLsqIO extends XSBundle {
+  val lcommit = Output(UInt(log2Up(CommitWidth + 1).W))
+  val scommit = Output(UInt(log2Up(CommitWidth + 1).W))
+  val pendingld = Output(Bool())
+  val pendingst = Output(Bool())
+  val commit = Output(Bool())
+}
+
+
+class CustomCSRCtrlIO extends XSBundle {
+  // Prefetcher
+  val l1I_pf_enable = Output(Bool())
+  val l2_pf_enable = Output(Bool())
+  val l1D_pf_enable = Output(Bool())
+  val l1D_pf_train_on_hit = Output(Bool())
+  val l1D_pf_enable_agt = Output(Bool())
+  val l1D_pf_enable_pht = Output(Bool())
+  val l1D_pf_active_threshold = Output(UInt(4.W))
+  val l1D_pf_active_stride = Output(UInt(6.W))
+  val l1D_pf_enable_stride = Output(Bool())
+  val l2_pf_store_only = Output(Bool())
+  // ICache
+  val icache_parity_enable = Output(Bool())
+  // Labeled XiangShan
+  val dsid = Output(UInt(8.W)) // TODO: DsidWidth as parameter
+  // Load violation predictor
+  val lvpred_disable = Output(Bool())
+  val no_spec_load = Output(Bool())
+  val storeset_wait_store = Output(Bool())
+  val storeset_no_fast_wakeup = Output(Bool())  ///more: not in memBlock RTL
+  val lvpred_timeout = Output(UInt(5.W))
+  // Branch predictor
+  val bp_ctrl = Output(new BPUCtrl)
+  // Memory Block
+  val sbuffer_threshold = Output(UInt(4.W))
+  val ldld_vio_check_enable = Output(Bool())
+  val soft_prefetch_enable = Output(Bool())
+  val cache_error_enable = Output(Bool())
+  val ptw_prefercache_enable = Output(Bool())
+  // Rename
+  val fusion_enable = Output(Bool())
+  val wfi_enable = Output(Bool())
+  // Decode
+  val svinval_enable = Output(Bool())
+  val move_elim_enable = Output(Bool())
+
+  // distribute csr write signal
+  val distribute_csr = new DistributedCSRIO()
+  // TODO: move it to a new bundle, since single step is not a custom control signal
+  val singlestep = Output(Bool())
+  val frontend_trigger = new FrontendTdataDistributeIO()
+  val mem_trigger = new MemTdataDistributeIO()
+}
+
+class MemTdataDistributeIO extends XSBundle {
+  val tUpdate = ValidIO(new Bundle {
+    val addr = Output(UInt(log2Up(TriggerNum).W))
+    val tdata = new MatchTriggerIO
+  })
+  val tEnableVec: Vec[Bool] = Output(Vec(TriggerNum, Bool()))
+}
+
+class BPUCtrl extends XSBundle {
+  val ubtb_enable = Bool()
+  val btb_enable  = Bool()
+  val bim_enable  = Bool()
+  val tage_enable = Bool()
+  val sc_enable   = Bool()
+  val ras_enable  = Bool()
+  val loop_enable = Bool()
+}
+
+class DistributedCSRIO extends XSBundle {
+  // CSR has been writen by csr inst, copies of csr should be updated
+  val w = ValidIO(new Bundle {
+    val addr = Output(UInt(12.W))
+    val data = Output(UInt(XLEN.W))
+  })
+}
+
+
+// these 3 bundles help distribute trigger control signals from CSR
+// to Frontend, Load and Store.
+class FrontendTdataDistributeIO extends XSBundle {
+  val tUpdate = ValidIO(new Bundle {
+    val addr = Output(UInt(log2Up(TriggerNum).W))
+    val tdata = new MatchTriggerIO
+  })
+  val tEnableVec: Vec[Bool] = Output(Vec(TriggerNum, Bool()))
+}
+
+class MatchTriggerIO extends XSBundle {
+  val matchType = Output(UInt(2.W))
+  val select = Output(Bool())
+  val timing = Output(Bool())
+  val action = Output(Bool())
+  val chain = Output(Bool())
+  val execute = Output(Bool())
+  val store = Output(Bool())
+  val load = Output(Bool())
+  val tdata2 = Output(UInt(64.W))
+}
+
+class DistributedCSRUpdateReq extends XSBundle {
+  // Request csr to be updated
+  //
+  // Note that this request will ONLY update CSR Module it self,
+  // copies of csr will NOT be updated, use it with care!
+  //
+  // For each cycle, no more than 1 DistributedCSRUpdateReq is valid
+  val w = ValidIO(new Bundle {
+    val addr = Output(UInt(12.W))
+    val data = Output(UInt(XLEN.W))
+  })
+  def apply(valid: Bool, addr: UInt, data: UInt, src_description: String) = {
+    when(valid){
+      w.bits.addr := addr
+      w.bits.data := data
+    }
+    println("Distributed CSR update req registered for " + src_description)
+  }
+}
+
+
+class L1CacheErrorInfo extends XSBundle {
+  // L1CacheErrorInfo is also used to encode customized CACHE_ERROR CSR
+  val source = Output(new Bundle() {
+    val tag = Bool() // l1 tag array
+    val data = Bool() // l1 data array
+    val l2 = Bool()
+  })
+  val opType = Output(new Bundle() {
+    val fetch = Bool()
+    val load = Bool()
+    val store = Bool()
+    val probe = Bool()
+    val release = Bool()
+    val atom = Bool()
+  })
+  val paddr = Output(UInt(PAddrBits.W))
+
+  // report error and paddr to beu
+  // bus error unit will receive error info iff ecc_error.valid
+  val report_to_beu = Output(Bool())
+
+  // there is an valid error
+  // l1 cache error will always be report to CACHE_ERROR csr
+  val valid = Output(Bool())
+
+//  def toL1BusErrorUnitInfo(): L1BusErrorUnitInfo = {
+//    val beu_info = Wire(new L1BusErrorUnitInfo)
+//    beu_info.ecc_error.valid := report_to_beu
+//    beu_info.ecc_error.bits := paddr
+//    beu_info
+//  }
+}
+
+class PerfEvent extends Bundle {
+  val value = UInt(6.W)
 }
 
 class Ftq_RF_Components extends XSBundle{
