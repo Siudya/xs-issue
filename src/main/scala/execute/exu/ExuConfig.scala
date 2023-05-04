@@ -18,6 +18,7 @@ object ExuType{
   def vmisc = 12
   def vfp = 13
   def vint = 14
+  def mou = 15
 
   private val mapping = Map(
     jmp -> "jmp",
@@ -34,7 +35,8 @@ object ExuType{
     vred -> "vred",
     vmisc -> "vmisc",
     vfp -> "vfp",
-    vint -> "vint"
+    vint -> "vint",
+    mou -> "mou"
   )
 
   def intTypes: Seq[Int] = Seq(jmp, alu, mul, div, i2f)

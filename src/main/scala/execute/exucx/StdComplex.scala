@@ -9,7 +9,7 @@ import freechips.rocketchip.diplomacy.LazyModule
 
 class StdComplex(id: Int)(implicit p:Parameters) extends BasicExuComplex{
   val bypassNum = 0
-  val std = LazyModule(new StdExu(id,"LduComplex", bypassNum))
+  val std = LazyModule(new StdExu(id,"StdComplex", bypassNum))
   std.issueNode :*= issueNode
   writebackNode :=* std.writebackNode
   lazy val module = new BasicExuComplexImp(this, bypassNum){

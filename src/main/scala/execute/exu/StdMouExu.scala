@@ -1,25 +1,25 @@
 package execute.exu
 
 import chipsalliance.rocketchip.config.Parameters
-import chisel3.util.Valid
 import chisel3.{Bundle, DontCare, Input, Vec}
+import chisel3.util.Valid
 import common.ExuOutput
 import execute.fu.FuConfigs
 
-class StdExu(id:Int, complexName:String, val bypassInNum:Int)(implicit p: Parameters) extends BasicExu {
+class StdMouExu(id:Int, complexName:String, val bypassInNum:Int)(implicit p: Parameters) extends BasicExu {
   private val cfg = ExuConfig(
-    name = "StdExu",
+    name = "StdMouExu",
     id = id,
     complexName = complexName,
-    fuConfigs = Seq(FuConfigs.stdCfg),
-    exuType = ExuType.std
+    fuConfigs = Seq(FuConfigs.stdCfg, FuConfigs.mouCfg, FuConfigs.mouDataCfg),
+    exuType = ExuType.mou
   )
-  lazy val module = new StdExuImp(this, cfg)
+  lazy val module = new StdMouExuImp(this, cfg)
   val issueNode: ExuInputNode = new ExuInputNode(cfg)
   val writebackNode: ExuOutNode = new ExuOutNode(cfg)
 }
 
-class StdExuImp(outer:StdExu, exuCfg:ExuConfig) extends BasicExuImpl(outer){
+class StdMouExuImp(outer:StdMouExu, exuCfg:ExuConfig) extends BasicExuImpl(outer){
   val io = IO(new Bundle {
     val bypassIn = Input(Vec(outer.bypassInNum, Valid(new ExuOutput)))
   })
