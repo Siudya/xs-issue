@@ -7,7 +7,8 @@ import common.Redirect
 import execute.exu.StdExu
 import freechips.rocketchip.diplomacy.LazyModule
 
-class StdComplex(id: Int, bypassNum:Int)(implicit p:Parameters) extends BasicExuComplex{
+class StdComplex(id: Int)(implicit p:Parameters) extends BasicExuComplex{
+  val bypassNum = 0
   val std = LazyModule(new StdExu(id,"LduComplex", bypassNum))
   std.issueNode :*= issueNode
   writebackNode :=* std.writebackNode

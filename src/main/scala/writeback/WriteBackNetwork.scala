@@ -26,8 +26,9 @@ class WriteBackNetwork(implicit p:Parameters) extends LazyModule{
       sink.zip(source).foreach({case(dst, (src,cfg)) =>
         dst := src
         if(s._2._1.needWriteback && cfg.speculativeWakeup){
-          dst.valid := RegNext(src.valid, false.B)
-          dst.bits.uop := RegEnable(src.bits.uop, src.valid)
+          val realValid = src.valid && !src.bits.uop.robIdx.needFlush(io.redirectIn)
+          dst.valid := RegNext(realValid, false.B)
+          dst.bits.uop := RegEnable(src.bits.uop, realValid)
         }
       })
     }

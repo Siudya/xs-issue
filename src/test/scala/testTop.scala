@@ -1,5 +1,4 @@
 import chisel3.stage.ChiselGeneratorAnnotation
-import execute.exu.{AluExu, DivExu, FmacExu, FmiscExu, JmpCsrExu, MulExu}
 import freechips.rocketchip.diplomacy._
 import xs.utils.Assertion
 import chipsalliance.rocketchip.config.{Config, Field, Parameters}
@@ -7,7 +6,8 @@ import common.{ExuOutput, MicroOp, Redirect}
 import regfile.RegFileTop
 import chisel3._
 import chisel3.util._
-import execute.exucx._
+import execute.exu.FenceIO
+import execute.exublock.{FloatingBlock, IntegerBlock}
 import issue.FpRs.FloatingReservationStation
 import issue.IntRs.IntegerReservationStation
 import issue.{EarlyWakeUpInfo, RsIssueNode}
@@ -24,26 +24,19 @@ class MyConfig extends Config((site, here, up) => {
 })
 
 class TestTop(implicit p:Parameters) extends LazyModule{
-  private val aluMuls = Seq.tabulate(2)(idx => LazyModule(new AluMulComplex(idx, 1)))
-  private val aluDivs = Seq.tabulate(1)(idx => LazyModule(new AluDivComplex(idx, 2)))
-  private val aluI2fs = Seq.tabulate(1)(idx => LazyModule(new AluI2fComplex(idx, 2)))
-  private val jmps = Seq.tabulate(1)(idx => LazyModule(new JmpCsrComplex(idx, 2)))
-  private val fmacs = Seq.tabulate(2)(idx => LazyModule(new FmacComplex(idx)))
-  private val fmacDivs = Seq.tabulate(1)(idx => LazyModule(new FmaDivComplex(idx)))
-  private val fmaMiscs = Seq.tabulate(1)(idx => LazyModule(new FmaMiscComplex(idx)))
+  private val integerBlock = LazyModule(new IntegerBlock(2, 1, 1, 1))
+  private val floatingBlock = LazyModule(new FloatingBlock(2, 1, 1))
   private val integerReservationStation = LazyModule(new IntegerReservationStation(4, 16))
   private val floatingReservationStation = LazyModule(new FloatingReservationStation(4, 16))
   private val writebackNetwork = LazyModule(new WriteBackNetwork)
   private val regFile = LazyModule(new RegFileTop)
-  private val intComplexes = aluMuls ++ aluDivs ++ aluI2fs ++ jmps
-  private val fpComplexes = fmacs ++ fmacDivs ++ fmaMiscs
-  private val complexes = intComplexes ++ fpComplexes
+  private val exuBlocks = integerBlock :: floatingBlock :: Nil
 
   regFile.issueNode :*= integerReservationStation.issueNode
   regFile.issueNode :*= floatingReservationStation.issueNode
-  for (cplx <- complexes) {
-    cplx.issueNode :*= regFile.issueNode
-    writebackNetwork.node :=* cplx.writebackNode
+  for (eb <- exuBlocks) {
+    eb.issueNode :*= regFile.issueNode
+    writebackNetwork.node :=* eb.writebackNode
   }
   regFile.writebackNode :=* writebackNetwork.node
   floatingReservationStation.wakeupNode := writebackNetwork.node
@@ -58,27 +51,24 @@ class TestTop(implicit p:Parameters) extends LazyModule{
       val redirectOut = Output(Vec(redirectOutNum, Valid(new Redirect)))
       val loadEarlyWakeup = Input(Vec(2, Valid(new EarlyWakeUpInfo)))
       val earlyWakeUpCancel = Input(Vec(2, Bool()))
+      val fenceio = new FenceIO
     })
-    (intComplexes ++ fpComplexes).foreach(_.module.redirectIn := io.redirectIn)
+    exuBlocks.foreach(_.module.redirectIn := io.redirectIn)
 
-    (jmps ++ aluDivs ++ aluI2fs).foreach(cplx => cplx.module.bypassIn.zip(aluMuls.map(_.module.io.bypassOut)).foreach({ case (a, b) => a := b }))
-    aluMuls.map(_.module.bypassIn).zipWithIndex.foreach({ case (bin, idx) =>
-      val sources = aluMuls.zipWithIndex.filterNot(_._2 == idx).map(_._1.module.io.bypassOut)
-      bin.zip(sources).foreach({ case (a, b) => a := b })
-    })
-    regFile.module.io.redirect := io.redirectIn
-    regFile.module.io.pcReadData := DontCare
     integerReservationStation.module.io.redirect := io.redirectIn
     integerReservationStation.module.io.enq <> io.enqInt
     integerReservationStation.module.io.loadEarlyWakeup := io.loadEarlyWakeup
     integerReservationStation.module.io.earlyWakeUpCancel := io.earlyWakeUpCancel
-    jmps.head.module.io.fenceio.sbuffer.sbIsEmpty := true.B
 
-    regFile.module.io.redirect := io.redirectIn
     floatingReservationStation.module.io.redirect := io.redirectIn
     floatingReservationStation.module.io.enq <> io.enqFp
     floatingReservationStation.module.io.loadEarlyWakeup := io.loadEarlyWakeup
     floatingReservationStation.module.io.earlyWakeUpCancel := io.earlyWakeUpCancel
+
+    regFile.module.io.redirect := io.redirectIn
+    regFile.module.io.pcReadData := DontCare
+
+    integerBlock.module.io.fenceio <> io.fenceio
 
     writebackNetwork.module.io.redirectIn := io.redirectIn
     io.redirectOut := writebackNetwork.module.io.redirectOut
