@@ -4,7 +4,7 @@ import chisel3.util._
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import chipsalliance.rocketchip.config.Parameters
 import chisel3.experimental.prefix
-import common.{ExuInput, MicroOp, Redirect, XSParam}
+import common.{ExuInput, Ftq_RF_Components, MicroOp, Redirect, XSParam}
 import execute.fu.fpu.FMAMidResult
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 
@@ -16,9 +16,8 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
     val pcReadNum:Int = issueNode.out.count(_._2._2.hasJmp) * 2 + issueNode.out.count(_._2._2.hasLoad)
     val io = IO(new Bundle{
       val redirect = Input(Valid(new Redirect))
-      val pcReadFtqIdx = Output(Vec(pcReadNum, UInt(log2Ceil(FtqSize).W)))
-      val pcReadFtqOffset = Output(Vec(pcReadNum, UInt(PredictWidth.W)))
-      val pcReadData = Input(Vec(pcReadNum, UInt(VAddrBits.W)))
+      val pcReadAddr = Output(Vec(pcReadNum, UInt(log2Ceil(FtqSize).W)))
+      val pcReadData = Input(Vec(pcReadNum, new Ftq_RF_Components))
       val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
     })
     require(issueNode.in.count(_._2._1.isIntRs) <= 1)
@@ -81,32 +80,33 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
 
         val lpvNeedCancel = bi.issue.bits.uop.lpv.zip(io.earlyWakeUpCancel).map({case(l,c) => l(1) & c}).reduce(_|_)
         if (exuComplexParam.isIntType) {
+          val issueBundle = WireInit(bi.issue.bits)
           val srcNum = exuComplexParam.intSrcNum
-          for((d, addr) <- exuInBundle.src.zip(exuInBundle.uop.psrc).take(srcNum)){
+          for((d, addr) <- issueBundle.src.zip(bi.issue.bits.uop.psrc).take(srcNum)){
             intRf.io.read(intRfReadIdx).addr := addr
             d := Mux(addr === 0.U, 0.U, intRf.io.read(intRfReadIdx).data)
             intRfReadIdx = intRfReadIdx + 1
           }
           if(exuComplexParam.hasJmp){
-            io.pcReadFtqIdx(pcReadPortIdx) := exuInBundle.uop.cf.ftqPtr.value
-            io.pcReadFtqIdx(pcReadPortIdx + 1) := (exuInBundle.uop.cf.ftqPtr + 1.U).value
-            io.pcReadFtqOffset(pcReadPortIdx) := exuInBundle.uop.cf.ftqOffset
-            io.pcReadFtqOffset(pcReadPortIdx + 1) := 0.U
-            ImmExtractor(exuComplexParam, exuInBundle, Some(io.pcReadData(pcReadPortIdx)), Some(io.pcReadData(pcReadPortIdx + 1)))
+            io.pcReadAddr(pcReadPortIdx) := bi.issue.bits.uop.cf.ftqPtr.value
+            io.pcReadAddr(pcReadPortIdx + 1) := (bi.issue.bits.uop.cf.ftqPtr + 1.U).value
+            val instrPc = io.pcReadData(pcReadPortIdx).getPc(bi.issue.bits.uop.cf.ftqOffset)
+            val jalrTarget = io.pcReadData(pcReadPortIdx + 1).startAddr
             pcReadPortIdx = pcReadPortIdx + 2
+            exuInBundle := ImmExtractor(exuComplexParam, issueBundle, Some(instrPc), Some(jalrTarget))
           } else {
-            ImmExtractor(exuComplexParam, exuInBundle)
+            exuInBundle := ImmExtractor(exuComplexParam, issueBundle)
           }
         } else if(exuComplexParam.isFpType){
           val srcNum = exuComplexParam.fpSrcNum
-          for (((d, addr), idx) <- exuInBundle.src.zip(exuInBundle.uop.psrc).take(srcNum).zipWithIndex) {
-            val realAddr = if(idx != 0 || !exuComplexParam.hasFmac) addr else Mux(bi.fmaMidState.in.valid, exuInBundle.uop.pdest, addr)
+          for (((d, addr), idx) <- exuInBundle.src.zip(bi.issue.bits.uop.psrc).take(srcNum).zipWithIndex) {
+            val realAddr = if(idx != 0 || !exuComplexParam.hasFmac) addr else Mux(bi.fmaMidState.in.valid, bi.issue.bits.uop.pdest, addr)
             fpRf.io.read(fpRfReadIdx).addr := realAddr
             d := fpRf.io.read(fpRfReadIdx).data
             fpRfReadIdx = fpRfReadIdx + 1
           }
           val midResultWidth = (new FMAMidResult).getWidth
-          val midResultLo = exuInBundle.src(0)
+          val midResultLo = bi.issue.bits.src(0)
           val midResultHi = bi.fmaMidState.in.bits.asUInt(midResultWidth - 1, XLEN)
           midResultBundle.bits := Cat(midResultHi, midResultLo).asTypeOf(new FMAMidResult)
         }

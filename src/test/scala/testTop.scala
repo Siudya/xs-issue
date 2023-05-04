@@ -71,10 +71,8 @@ class TestTop(implicit p:Parameters) extends LazyModule{
     pcMem.io.write.head := io.pcMemWrite
 
     regFile.module.io.redirect := io.redirectIn
-    pcMem.io.read.zip(regFile.module.io.pcReadFtqIdx).foreach({case(r, addr) => r.addr := addr})
-    regFile.module.io.pcReadData.zip(regFile.module.io.pcReadFtqOffset).zip(pcMem.io.read).foreach({
-      case((data, off), r) => data := r.data.getPc(off)
-    })
+    pcMem.io.read.zip(regFile.module.io.pcReadAddr).foreach({case(r, addr) => r.addr := addr})
+    regFile.module.io.pcReadData.zip(pcMem.io.read).foreach({case(data, r) => data := r.data})
 
     integerBlock.module.io.fenceio <> io.fenceio
 

@@ -2,7 +2,7 @@ package writeback
 import chipsalliance.rocketchip.config.Parameters
 import chisel3._
 import chisel3.util._
-import common.Redirect
+import common.{ExuOutput, Redirect}
 import freechips.rocketchip.diplomacy._
 class WriteBackNetwork(implicit p:Parameters) extends LazyModule{
   val node = new WriteBackNetworkNode
@@ -15,8 +15,6 @@ class WriteBackNetwork(implicit p:Parameters) extends LazyModule{
     private val redirectOutNum = wbSources.count(_._2.hasRedirectOut)
     val io = IO(new Bundle{
       val redirectIn = Input(Valid(new Redirect))
-      val fflagsWrite = Output(Vec(fflagsNum, Valid(UInt(5.W))))
-      val redirectOut = Output(Vec(redirectOutNum, Valid(new Redirect)))
     })
 
     for(s <- wbSink){
@@ -33,13 +31,12 @@ class WriteBackNetwork(implicit p:Parameters) extends LazyModule{
       })
     }
 
-    for((f, fromExu) <- io.fflagsWrite.zip(wbSources.filter(_._2.writeFloatFlags).map(_._1))){
-      f.valid := fromExu.valid
-      f.bits := fromExu.bits.fflags
-    }
-    for ((r, fromExu) <- io.redirectOut.zip(wbSources.filter(_._2.hasRedirectOut).map(_._1))) {
-      r.valid := fromExu.valid & fromExu.bits.redirectValid
-      r.bits := fromExu.bits.redirect
-    }
+    val redirectOut = wbSources.filter(_._2.hasRedirectOut).map(elm =>{
+      val redirectBundle = elm._1
+      val redirectParam = elm._2
+      val out = IO(Output(Valid(new ExuOutput)))
+      out := redirectBundle
+      (out, redirectParam)
+    })
   }
 }

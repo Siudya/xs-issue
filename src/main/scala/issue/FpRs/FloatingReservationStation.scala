@@ -111,7 +111,7 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
   private var fmaPortIdx = 0
   private var fdivPortIdx = 0
   private var fmiscPortIdx = 0
-  println("\nInteger Reservation Issue Ports Config:")
+  println("\nFloating Point Reservation Issue Ports Config:")
   for((iss, issuePortIdx) <- issue.zipWithIndex) {
     println(s"Issue Port $issuePortIdx ${iss._2}")
     prefix(iss._2.name + "_" + iss._2.id) {
