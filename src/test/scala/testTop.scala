@@ -92,5 +92,5 @@ object GenRtl extends App {
     fw.close
     f
   }
-  writeOutputFile("./build", s"FloatingTop.graphml", top.graphML)
+  writeOutputFile("./build", s"TestTop.graphml", top.graphML)
 }
