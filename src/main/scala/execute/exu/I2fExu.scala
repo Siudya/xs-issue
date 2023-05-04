@@ -18,7 +18,7 @@ class I2fExu(id:Int, complexName:String, val bypassInNum:Int)(implicit p:Paramet
     exuType = ExuType.i2f
   )
   val issueNode = new ExuInputNode(cfg)
-  val writebackNode = new ExuOutNode(cfg)
+  val writebackNode = new ExuOutputNode(cfg)
 
   lazy val module = new I2fImpl(this, cfg)
 }

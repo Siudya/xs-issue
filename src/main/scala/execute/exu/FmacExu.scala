@@ -16,7 +16,7 @@ class FmacExu(id:Int, complexName:String)(implicit p:Parameters) extends BasicEx
     speculativeWakeup = true
   )
   val issueNode = new ExuInputNode(cfg)
-  val writebackNode = new ExuOutNode(cfg)
+  val writebackNode = new ExuOutputNode(cfg)
   lazy val module = new FmacExuImpl(this, cfg)
 }
 class FmacExuImpl(outer:FmacExu, exuCfg:ExuConfig)(implicit p:Parameters) extends BasicExuImpl(outer){

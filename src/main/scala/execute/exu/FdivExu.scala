@@ -19,7 +19,7 @@ class FdivExu(id:Int, complexName:String)(implicit p:Parameters) extends BasicEx
     needToken = true
   )
   val issueNode = new ExuInputNode(cfg)
-  val writebackNode = new ExuOutNode(cfg)
+  val writebackNode = new ExuOutputNode(cfg)
   lazy val module = new FdivExuImpl(this, cfg)
 }
 class FdivExuImpl(outer:FdivExu, exuCfg:ExuConfig)(implicit p:Parameters) extends BasicExuImpl(outer) with XSParam{

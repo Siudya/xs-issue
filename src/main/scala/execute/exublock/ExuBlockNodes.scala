@@ -2,8 +2,9 @@ package execute.exublock
 
 import chipsalliance.rocketchip.config
 import chisel3.internal.sourceinfo.SourceInfo
+import execute.exu.ExuConfig
 import execute.exucx.{ExuComplexParam, ExuComplexWritebackNode}
-import freechips.rocketchip.diplomacy.{AdapterNode, RenderedEdge, SimpleNodeImp, ValName}
+import freechips.rocketchip.diplomacy.{AdapterNode, RenderedEdge, SimpleNodeImp, SinkNode, ValName}
 import issue.{IssueBundle, RsParam}
 
 object ExuBlockIssueNodeImpl extends SimpleNodeImp[Seq[RsParam], ExuComplexParam, (RsParam, ExuComplexParam), IssueBundle]{
@@ -27,3 +28,5 @@ class ExuBlockWritebackNode(implicit valName: ValName) extends ExuComplexWriteba
 
 class ExuBlockIssueNode(implicit valName: ValName) extends
   AdapterNode(ExuBlockIssueNodeImpl)({p => p}, {p => p})
+
+class MemoryBlockIssueNode(cfg:(ExuConfig, Int))(implicit valName: ValName) extends SinkNode(ExuBlockIssueNodeImpl)(Seq(ExuComplexParam(cfg._2, Seq(cfg._1))))

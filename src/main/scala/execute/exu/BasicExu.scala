@@ -9,7 +9,7 @@ import xs.utils.Assertion.xs_assert
 
 abstract class BasicExu(implicit p:Parameters) extends LazyModule{
   def issueNode: ExuInputNode
-  def writebackNode: ExuOutNode
+  def writebackNode: ExuOutputNode
   def module:BasicExuImpl
 }
 

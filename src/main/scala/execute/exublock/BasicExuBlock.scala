@@ -4,7 +4,6 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3.util.Valid
 import chisel3.{Input, Vec}
 import common.{ExuOutput, Redirect}
-import execute.exucx.BasicExuComplex
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 
 abstract class BasicExuBlock(implicit p:Parameters) extends LazyModule{

@@ -16,7 +16,7 @@ class FmiscExu(id:Int, complexName:String)(implicit p:Parameters) extends BasicE
     exuType = ExuType.fmisc
   )
   val issueNode = new ExuInputNode(cfg)
-  val writebackNode = new ExuOutNode(cfg)
+  val writebackNode = new ExuOutputNode(cfg)
   lazy val module = new FmiscExuImpl(this, cfg)
 }
 class FmiscExuImpl(outer:FmiscExu, exuCfg:ExuConfig)(implicit p:Parameters) extends BasicExuImpl(outer) with XSParam{

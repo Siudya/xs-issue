@@ -24,7 +24,7 @@ class JmpCsrExu (id:Int, complexName:String, val bypassInNum:Int)(implicit p:Par
     exuType = ExuType.jmp
   )
   val issueNode = new ExuInputNode(cfg)
-  val writebackNode = new ExuOutNode(cfg)
+  val writebackNode = new ExuOutputNode(cfg)
   override lazy val module = new JmpCsrExuImpl(this, cfg)
 }
 class JmpCsrExuImpl(outer:JmpCsrExu, exuCfg:ExuConfig)(implicit p:Parameters) extends BasicExuImpl(outer) with XSParam {

@@ -66,7 +66,7 @@ object ExuComplexIssueInwardNodeImpl extends InwardNodeImp[Seq[RsParam], ExuComp
     }
   }
   override def bundleI(ei: (RsParam, ExuComplexParam)): IssueBundle = new IssueBundle(ei._1.bankNum, ei._1.entriesNum)
-  override def render(ei: (RsParam, ExuComplexParam)): RenderedEdge = RenderedEdge("#0000ff", ei._2.exuConfigs.map(_.name + "_").reduce(_++_))
+  override def render(ei: (RsParam, ExuComplexParam)): RenderedEdge = RenderedEdge("#0000ff", ei._2.exuConfigs.map(_.name).reduce(_++_))
 }
 object ExuComplexIssueOutwardNodeImpl extends OutwardNodeImp[Seq[RsParam], ExuConfig, (RsParam, ExuConfig), IssueBundle]{
   override def edgeO(pd: Seq[RsParam], pu: ExuConfig, p: config.Parameters, sourceInfo: SourceInfo): (RsParam, ExuConfig) = {

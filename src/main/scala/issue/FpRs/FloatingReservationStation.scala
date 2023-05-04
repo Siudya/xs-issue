@@ -29,8 +29,6 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
   require(param.bankNum == 4)
   require(param.entriesNum % param.bankNum == 0)
   private val issue = outer.issueNode.out.head._1 zip outer.issueNode.out.head._2._2
-  println("\nFloating Reservation Issue Ports Config:")
-  outer.issueNode.out.head._2._2.foreach(cfg => println(cfg))
   private val wbIn = outer.wakeupNode.in.head
   private val wakeup = wbIn._1.zip(wbIn._2)
   issue.foreach(elm => elm._2.exuConfigs.foreach(elm0 => require(ExuType.fpTypes.contains(elm0.exuType))))
@@ -52,7 +50,6 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
   })
-  io.enq.suggestName("new_enq")
 
   private val wakeupSignals = VecInit(wakeup.map(_._1).map(elm =>{
     val wkp = Wire(Valid(new WakeUpInfo))
@@ -114,7 +111,9 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
   private var fmaPortIdx = 0
   private var fdivPortIdx = 0
   private var fmiscPortIdx = 0
+  println("\nInteger Reservation Issue Ports Config:")
   for((iss, issuePortIdx) <- issue.zipWithIndex) {
+    println(s"Issue Port $issuePortIdx ${iss._2}")
     prefix(iss._2.name + "_" + iss._2.id) {
       val issueDriver = Module(new DecoupledPipeline(true, param.bankNum, entriesNumPerBank))
       issueDriver.io.redirect := io.redirect

@@ -18,7 +18,7 @@ class MulExu(id:Int, complexName:String, val bypassInNum:Int)(implicit p:Paramet
     exuType = ExuType.mul
   )
   val issueNode = new ExuInputNode(cfg)
-  val writebackNode = new ExuOutNode(cfg)
+  val writebackNode = new ExuOutputNode(cfg)
 
   lazy val module = new MulExuImpl(this, cfg)
 }
