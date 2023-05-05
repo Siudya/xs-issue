@@ -19,7 +19,6 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
       val redirect = Input(Valid(new Redirect))
       val pcReadAddr = Output(Vec(pcReadNum, UInt(log2Ceil(FtqSize).W)))
       val pcReadData = Input(Vec(pcReadNum, new Ftq_RF_Components))
-      val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
     })
     require(issueNode.in.count(_._2._1.isIntRs) <= 1)
     require(issueNode.in.count(_._2._1.isMemRs) <= 1)
@@ -79,7 +78,6 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
         val midResultBundle = WireInit(bi.fmaMidState.in)
         exuInBundle.src := DontCare
 
-        val lpvNeedCancel = bi.issue.bits.uop.lpv.zip(io.earlyWakeUpCancel).map({case(l,c) => l(1) & c}).reduce(_|_)
         if (exuComplexParam.isIntType) {
           val issueBundle = WireInit(bi.issue.bits)
           val srcNum = exuComplexParam.intSrcNum
@@ -126,7 +124,7 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
         bo.fmaMidState.waitForAdd := fmaWaitAddReg
         bo.rsIdx := rsIdxReg
         when(allowPipe) {
-          issueValidReg := bi.issue.valid && !bi.issue.bits.uop.robIdx.needFlush(io.redirect) && !lpvNeedCancel
+          issueValidReg := bi.issue.valid
         }
         when(allowPipe && bi.issue.valid) {
           issueExuInReg := exuInBundle

@@ -142,8 +142,8 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
         val selectRespArbiter = Module(new Arbiter(new SelectResp(param.bankNum, entriesNumPerBank), 2))
         selectRespArbiter.io.in(0) <> aluSelectNetwork.io.issueInfo(aluPortIdx - 1)
         selectRespArbiter.io.in(1) <> mulSelectNetwork.io.issueInfo(mulPortIdx - 1)
-        internalWakeupSignals(internalWkpPortIdx - 2) := WakeupQueue(aluSelectNetwork.io.issueInfo(aluPortIdx - 1), aluSelectNetwork.cfg.latency, io.redirect)
-        internalWakeupSignals(internalWkpPortIdx - 1) := WakeupQueue(mulSelectNetwork.io.issueInfo(mulPortIdx - 1), mulSelectNetwork.cfg.latency, io.redirect)
+        internalWakeupSignals(internalWkpPortIdx - 2) := WakeupQueue(aluSelectNetwork.io.issueInfo(aluPortIdx - 1), aluSelectNetwork.cfg.latency, io.redirect, io.earlyWakeUpCancel)
+        internalWakeupSignals(internalWkpPortIdx - 1) := WakeupQueue(mulSelectNetwork.io.issueInfo(mulPortIdx - 1), mulSelectNetwork.cfg.latency, io.redirect, io.earlyWakeUpCancel)
         selectRespArbiter.io.out
       } else if (iss._2.isAluDiv) {
         aluPortIdx = aluPortIdx + 1
@@ -152,7 +152,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
         val selectRespArbiter = Module(new Arbiter(new SelectResp(param.bankNum, entriesNumPerBank), 2))
         selectRespArbiter.io.in(0) <> aluSelectNetwork.io.issueInfo(aluPortIdx - 1)
         selectRespArbiter.io.in(1) <> divSelectNetwork.io.issueInfo(divPortIdx - 1)
-        internalWakeupSignals(internalWkpPortIdx - 1) := WakeupQueue(aluSelectNetwork.io.issueInfo(aluPortIdx - 1), aluSelectNetwork.cfg.latency, io.redirect)
+        internalWakeupSignals(internalWkpPortIdx - 1) := WakeupQueue(aluSelectNetwork.io.issueInfo(aluPortIdx - 1), aluSelectNetwork.cfg.latency, io.redirect, io.earlyWakeUpCancel)
         selectRespArbiter.io.out
       } else {
         aluPortIdx = aluPortIdx + 1
@@ -161,7 +161,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
         val selectRespArbiter = Module(new Arbiter(new SelectResp(param.bankNum, entriesNumPerBank), 2))
         selectRespArbiter.io.in(0) <> aluSelectNetwork.io.issueInfo(aluPortIdx - 1)
         selectRespArbiter.io.in(1) <> i2fSelectNetwork.io.issueInfo(i2fPortIdx - 1)
-        internalWakeupSignals(internalWkpPortIdx - 1) := WakeupQueue(aluSelectNetwork.io.issueInfo(aluPortIdx - 1), aluSelectNetwork.cfg.latency, io.redirect)
+        internalWakeupSignals(internalWkpPortIdx - 1) := WakeupQueue(aluSelectNetwork.io.issueInfo(aluPortIdx - 1), aluSelectNetwork.cfg.latency, io.redirect, io.earlyWakeUpCancel)
         selectRespArbiter.io.out
       }
 

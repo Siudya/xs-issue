@@ -187,10 +187,10 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
 
       val midStateWaitQueueInValidReg = RegInit(false.B)
       val midStateWaitQueueInDataReg = Reg(new SelectResp(param.bankNum, entriesNumPerBank))
-      when(issueDriver.io.deq.fire && !issueDriver.io.deq.bits.uop.robIdx.needFlush(io.redirect)) {
+      when(issueDriver.io.deq.fire) {
         midStateWaitQueueInValidReg := issueDriver.io.deq.bits.fmaWaitForAdd
       }
-      when(issueDriver.io.deq.fire && issueDriver.io.deq.bits.fmaWaitForAdd && !issueDriver.io.deq.bits.uop.robIdx.needFlush(io.redirect)) {
+      when(issueDriver.io.deq.fire && issueDriver.io.deq.bits.fmaWaitForAdd) {
         midStateWaitQueueInDataReg.bankIdxOH := issueDriver.io.deq.bits.bankIdxOH
         midStateWaitQueueInDataReg.entryIdxOH := issueDriver.io.deq.bits.entryIdxOH
         midStateWaitQueueInDataReg.info := DontCare

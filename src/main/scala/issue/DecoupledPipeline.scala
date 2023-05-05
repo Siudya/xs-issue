@@ -38,30 +38,36 @@ class DecoupledPipeline(implementQueue:Boolean, bankIdxWidth:Int, entryIdxWidth:
     })
 
     io.enq.ready := !full
-    io.deq.valid := !empty
-    io.deq.bits := mem(deqPtr.value)
+    io.deq.valid := !empty && !shouldBeKilled(deqPtr.value)
+    val outData = mem(deqPtr.value)
+    io.deq.bits := outData
+    io.deq.bits.uop.lpv.zip(outData.uop.lpv).foreach({case(a,b) => a := LogicShiftRight(b, 1)})
 
     mem.flatMap(_.uop.lpv).foreach(l =>{
       when(l.orR){
         l := LogicShiftRight(l, 1)
       }
     })
-    when(enqFire){
+
+    when(full && shouldBeKilled((enqPtr - 1.U).value)){
+      enqPtr := enqPtr - 1.U
+    }.elsewhen(enqFire){
       mem(enqPtr.value) := io.enq.bits
       enqPtr := enqPtr + 1.U
     }
-    when(deqFire || (io.deq.valid && shouldBeKilled(deqPtr.value))) {
-      when(full && shouldBeKilled(deqPtr.value + 1.U)){
-        deqPtr := deqPtr + 2.U
-      }.otherwise{
-        deqPtr := deqPtr + 1.U
-      }
+    when(deqFire || (!empty && shouldBeKilled(deqPtr.value))) {
+      deqPtr := deqPtr + 1.U
     }
   } else {
     //ready should be true all the time
     io.enq.ready := io.deq.ready
     xs_assert(io.deq.ready)
-    io.deq.valid := RegNext(io.enq.valid, false.B)
-    io.deq.bits := RegEnable(io.enq.bits, io.enq.valid)
+    val deqValidDriverReg = RegNext(io.enq.valid, false.B)
+    val deqDataDriverReg = RegEnable(io.enq.bits, io.enq.valid)
+    val shouldBeFlushed = deqDataDriverReg.uop.robIdx.needFlush(io.redirect)
+    val shouldBeCanceled = deqDataDriverReg.uop.lpv.zip(io.earlyWakeUpCancel).map({case(l,c) => l(0) && c}).reduce(_||_)
+    io.deq.valid := deqValidDriverReg && !shouldBeFlushed && !shouldBeCanceled
+    io.deq.bits := deqDataDriverReg
+    io.deq.bits.uop.lpv.zip(deqDataDriverReg.uop.lpv).foreach({case(a,b) => a := LogicShiftRight(b, 1)})
   }
 }
