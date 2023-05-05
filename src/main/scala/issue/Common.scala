@@ -76,10 +76,7 @@ class IssueBundle(bankNum:Int, entryNum:Int) extends XSBundle {
   val rsIdx = Output(new RsIdx(bankNum, entryNum))
   val fmaMidState = Flipped(new FMAMidResultIO)
   val fuInFire = Input(Bool())
-
-  val loadFastImm = Output(Bool())
-  val loadFastMatch = Output(UInt(12.W))
-  val rsFeedback = Input(new RSFeedbackIO())
+  val rsFeedback = Flipped(new RSFeedbackIO)
   val stIssuePtr = Input(new SqPtr())
 }
 

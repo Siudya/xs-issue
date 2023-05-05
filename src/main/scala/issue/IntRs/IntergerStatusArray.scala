@@ -28,22 +28,25 @@ import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
 import firrtl.passes.InlineAnnotation
 
-class IntegerIssueInfoGenerator extends Module{
+class IntegerIssueInfoGenerator extends XSModule{
   val io = IO(new Bundle{
     val in = Input(Valid(new IntegerStatusArrayEntry))
     val out = Output(Valid(new SelectInfo))
+    val redirect = Input(Valid(new Redirect))
+    val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
   })
   private val iv = io.in.valid
   private val ib = io.in.bits
+  private val shouldBeFlushed = ib.robIdx.needFlush(io.redirect)
+  private val shouldBeCanceled = ib.lpv.map(l => l.zip(io.earlyWakeUpCancel).map({ case (li, c) => li(1) && c }).reduce(_ || _)).reduce(_ || _)
   private val readyToIssue = ib.srcState(0) === SrcState.rdy & ib.srcState(1) === SrcState.rdy & !ib.issued
-  io.out.valid := readyToIssue & iv
+  io.out.valid := readyToIssue && iv && !shouldBeFlushed && !shouldBeCanceled
   io.out.bits.fuType := ib.fuType
   io.out.bits.robPtr := ib.robIdx
   io.out.bits.pdest := ib.pdest
   io.out.bits.fpWen := ib.fpWen
   io.out.bits.rfWen := ib.rfWen
-  private val lpvShiftRight = ib.lpv.map(_.map(elm=>LogicShiftRight(elm, 1)))
-  io.out.bits.lpv.zip(lpvShiftRight.transpose).foreach({case(o, i) => o := i.reduce(_|_)})
+  io.out.bits.lpv.zip(ib.lpv.transpose).foreach({case(o, i) => o := i.reduce(_|_)})
   io.out.bits.fmaWaitAdd := false.B
   io.out.bits.midResultReadEn := false.B
 
@@ -167,9 +170,10 @@ class IntegerStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnit
     .zip(statusArray)
     .zip(statusArrayValid)){
     val entryToSelectInfoCvt = Module(new IntegerIssueInfoGenerator)
-    val shouldBeCancelled = saEntry.lpv.flatMap(lpv => io.earlyWakeUpCancel.zip(lpv).map({case(v, l) => v&l(0)})).reduce(_|_)
-    entryToSelectInfoCvt.io.in.valid := saValid && !shouldBeCancelled
+    entryToSelectInfoCvt.io.in.valid := saValid
     entryToSelectInfoCvt.io.in.bits := saEntry
+    entryToSelectInfoCvt.io.earlyWakeUpCancel := io.earlyWakeUpCancel
+    entryToSelectInfoCvt.io.redirect := io.redirect
     selInfo := entryToSelectInfoCvt.io.out
   }
   //End of select logic

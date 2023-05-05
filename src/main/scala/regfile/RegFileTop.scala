@@ -6,6 +6,7 @@ import chipsalliance.rocketchip.config.Parameters
 import chisel3.experimental.prefix
 import common.{ExuInput, Ftq_RF_Components, MicroOp, Redirect, XSParam}
 import execute.fu.fpu.FMAMidResult
+import issue.RsIdx
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 
 class RegFileTop(implicit p:Parameters) extends LazyModule{
@@ -114,21 +115,24 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
         val issueValidReg = RegInit(false.B)
         val issueExuInReg = Reg(new ExuInput)
         val midResultReg = Reg(Valid(new FMAMidResult))
-        val fmaWaitAdd = Reg(Bool())
+        val fmaWaitAddReg = Reg(Bool())
+        val rsIdxReg = Reg(new RsIdx(rsParam.bankNum, rsParam.entriesNum))
 
         val allowPipe = !issueValidReg || bo.issue.fire
         bi.fuInFire := bo.issue.fire
         bo.issue.valid := issueValidReg
         bo.issue.bits := issueExuInReg
         bo.fmaMidState.in := midResultReg
-        bo.fmaMidState.waitForAdd := fmaWaitAdd
+        bo.fmaMidState.waitForAdd := fmaWaitAddReg
+        bo.rsIdx := rsIdxReg
         when(allowPipe) {
           issueValidReg := bi.issue.valid && !bi.issue.bits.uop.robIdx.needFlush(io.redirect) && !lpvNeedCancel
         }
         when(allowPipe && bi.issue.valid) {
           issueExuInReg := exuInBundle
           midResultReg := midResultBundle
-          fmaWaitAdd := bi.fmaMidState.waitForAdd
+          fmaWaitAddReg := bi.fmaMidState.waitForAdd
+          rsIdxReg := bi.rsIdx
         }
       }
     }

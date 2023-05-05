@@ -6,8 +6,6 @@ import chisel3.util._
 import common.{MicroOp, Redirect, SrcType, XSParam}
 import execute.exu.ExuType
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, ValName}
-import execute.fu.fpu.FMAMidResult
-import issue.FpRs.{DecoupledPipeline, FloatingReservationBank, MidStateWaitQueue}
 import issue._
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
 
@@ -132,6 +130,7 @@ class IntegerReservationStationImpl(outer:IntegerReservationStation, param:RsPar
     prefix(iss._2.name + "_" + iss._2.id) {
       val issueDriver = Module(new DecoupledPipeline(iss._2.isJmpCsr, param.bankNum, entriesNumPerBank))
       issueDriver.io.redirect := io.redirect
+      issueDriver.io.earlyWakeUpCancel := io.earlyWakeUpCancel
 
       val finalSelectInfo = if (iss._2.isJmpCsr) {
         jmpPortIdx = jmpPortIdx + 1

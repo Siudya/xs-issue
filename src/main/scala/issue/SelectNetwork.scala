@@ -24,7 +24,7 @@ import chisel3.util._
 import common.{FuType, Redirect, RobPtr, XSBundle, XSModule}
 import execute.exu.ExuConfig
 import xs.utils.Assertion.xs_assert
-import xs.utils.ParallelOperation
+import xs.utils.{LogicShiftRight, ParallelOperation}
 
 class SelectInfo extends XSBundle{
   val fuType = FuType()
@@ -161,19 +161,19 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, val cfg:ExuConfig, 
       ta.io.alloc.bits.pdest := driver.io.out.bits.info.pdest
       ta.io.alloc.bits.robPtr := driver.io.out.bits.info.robPtr
       ta.io.release := tr
-      val shouldBeSuppressed = driver.io.out.bits.info.robPtr.needFlush(io.redirect)
-      outPort.valid := driver.io.out.valid && !shouldBeSuppressed && ta.io.allow
+      outPort.valid := driver.io.out.valid && ta.io.allow
       outPort.bits.bankIdxOH := driver.io.out.bits.bankIdxOH
       outPort.bits.entryIdxOH := driver.io.out.bits.entryIdxOH
       outPort.bits.info := driver.io.out.bits.info
+      outPort.bits.info.lpv.zip(driver.io.out.bits.info.lpv).foreach({case(o, i) => o := LogicShiftRight(i, 1)})
     }
   } else {
     for ((outPort, driver) <- io.issueInfo.zip(selectorSeq)) {
-      val shouldBeSuppressed = driver.io.out.bits.info.robPtr.needFlush(io.redirect)
-      outPort.valid := driver.io.out.valid && !shouldBeSuppressed
+      outPort.valid := driver.io.out.valid
       outPort.bits.bankIdxOH := driver.io.out.bits.bankIdxOH
       outPort.bits.entryIdxOH := driver.io.out.bits.entryIdxOH
       outPort.bits.info := driver.io.out.bits.info
+      outPort.bits.info.lpv.zip(driver.io.out.bits.info.lpv).foreach({case(o, i) => o := LogicShiftRight(i, 1)})
     }
   }
 
@@ -182,6 +182,4 @@ class SelectNetwork(bankNum:Int, entryNum:Int, issueNum:Int, val cfg:ExuConfig, 
     val selectedInfo = Mux1H(UIntToOH(OHToUInt(outPort.bits.bankIdxOH) * entryNum.U + OHToUInt(outPort.bits.entryIdxOH)), flatInputInfoVec)
     xs_assert(Mux(outPort.valid, selectedInfo.valid & fuTypeList.map(_ === selectedInfo.bits.fuType).reduce(_|_), true.B))
   }
-
-  //TODO: Should check if the selected instruction is the oldest one
 }

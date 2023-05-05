@@ -117,6 +117,7 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
     prefix(iss._2.name + "_" + iss._2.id) {
       val issueDriver = Module(new DecoupledPipeline(true, param.bankNum, entriesNumPerBank))
       issueDriver.io.redirect := io.redirect
+      issueDriver.io.earlyWakeUpCancel := io.earlyWakeUpCancel
 
       val midStateWaitQueue = Module(new MidStateWaitQueue(2, param.bankNum, entriesNumPerBank))
       midStateWaitQueue.io.redirect := io.redirect

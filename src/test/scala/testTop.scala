@@ -77,7 +77,10 @@ class TestTop(implicit p:Parameters) extends LazyModule{
     integerBlock.module.io.fenceio <> io.fenceio
 
     writebackNetwork.module.io.redirectIn := io.redirectIn
-    io.redirectOut := writebackNetwork.module.io.redirectOut
+    io.redirectOut.zip(writebackNetwork.module.io.redirectOut).foreach({case(sink, src) =>
+      sink.valid := src.bits.redirectValid
+      sink.bits := src.bits.redirect
+    })
   }
 }
 

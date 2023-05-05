@@ -35,19 +35,23 @@ object EntryState{
   def s_issued = 3.U
 }
 
-class FloatingIssueInfoGenerator extends Module{
+class FloatingIssueInfoGenerator extends XSModule{
   val io = IO(new Bundle{
     val in = Input(Valid(new FloatingStatusArrayEntry))
     val out = Output(Valid(new SelectInfo))
+    val redirect = Input(Valid(new Redirect))
+    val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
   })
   private val iv = io.in.valid
   private val ib = io.in.bits
+  private val shouldBeFlushed = ib.robIdx.needFlush(io.redirect)
+  private val shouldBeCanceled = ib.lpv.map(l => l.zip(io.earlyWakeUpCancel).map({case(li, c) => li(1) && c}).reduce(_||_)).reduce(_||_)
   private val readyToIssue = Wire(Bool())
   private val fmaIssueCond0 = ib.srcState(0) === SrcState.rdy && ib.srcState(1) === SrcState.rdy && ib.state === EntryState.s_idle
   private val fmaIssueCond1 = ib.srcState(2) === SrcState.rdy && ib.state === EntryState.s_mid_received
   private val fmiscIssueCond = ib.srcState(0) === SrcState.rdy && ib.srcState(1) === SrcState.rdy
   readyToIssue := Mux(ib.isFma, fmaIssueCond0 | fmaIssueCond1, fmiscIssueCond)
-  io.out.valid := readyToIssue & iv
+  io.out.valid := readyToIssue && iv && !shouldBeFlushed && !shouldBeCanceled
   io.out.bits.fuType := ib.fuType
   io.out.bits.robPtr := ib.robIdx
   io.out.bits.pdest := ib.pdest
@@ -55,8 +59,7 @@ class FloatingIssueInfoGenerator extends Module{
   io.out.bits.rfWen := ib.rfWen
   io.out.bits.fmaWaitAdd := ib.isFma && ib.srcState(0) === SrcState.rdy && ib.srcState(1) === SrcState.rdy && ib.srcState(2) =/= SrcState.rdy
   io.out.bits.midResultReadEn := ib.isFma && fmaIssueCond1
-  private val lpvShiftRight = ib.lpv.map(_.map(elm=>LogicShiftRight(elm, 1)))
-  io.out.bits.lpv.zip(lpvShiftRight.transpose).foreach({case(o, i) => o := i.reduce(_|_)})
+  io.out.bits.lpv.zip(ib.lpv.transpose).foreach({case(o, i) => o := i.map(LogicShiftRight(_, 1)).reduce(_|_)})
   chisel3.experimental.annotate(new ChiselAnnotation {
     def toFirrtl = InlineAnnotation(toNamed)
   })
@@ -219,9 +222,10 @@ class FloatingStatusArray(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUni
     .zip(statusArray)
     .zip(statusArrayValid)){
     val entryToSelectInfoCvt = Module(new FloatingIssueInfoGenerator)
-    val shouldBeCancelled = saEntry.lpv.flatMap(lpv => io.earlyWakeUpCancel.zip(lpv).map({case(v, l) => v&l(0)})).reduce(_|_)
-    entryToSelectInfoCvt.io.in.valid := saValid && !shouldBeCancelled
+    entryToSelectInfoCvt.io.in.valid := saValid
     entryToSelectInfoCvt.io.in.bits := saEntry
+    entryToSelectInfoCvt.io.earlyWakeUpCancel := io.earlyWakeUpCancel
+    entryToSelectInfoCvt.io.redirect := io.redirect
     selInfo := entryToSelectInfoCvt.io.out
   }
   //End of select logic

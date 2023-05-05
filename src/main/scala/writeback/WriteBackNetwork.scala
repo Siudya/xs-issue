@@ -15,6 +15,12 @@ class WriteBackNetwork(implicit p:Parameters) extends LazyModule{
     private val redirectOutNum = wbSources.count(_._2.hasRedirectOut)
     val io = IO(new Bundle{
       val redirectIn = Input(Valid(new Redirect))
+      val redirectOut = Output(Vec(wbSources.count(_._2.hasRedirectOut), Valid(new ExuOutput)))
+    })
+    val redirectOutParam = wbSources.filter(_._2.hasRedirectOut).zip(io.redirectOut).map({case(source, sink) =>
+      sink.valid := source._1.valid
+      sink.bits := source._1.bits
+      source._2
     })
 
     for(s <- wbSink){
@@ -30,13 +36,5 @@ class WriteBackNetwork(implicit p:Parameters) extends LazyModule{
         }
       })
     }
-
-    val redirectOut = wbSources.filter(_._2.hasRedirectOut).map(elm =>{
-      val redirectBundle = elm._1
-      val redirectParam = elm._2
-      val out = IO(Output(Valid(new ExuOutput)))
-      out := redirectBundle
-      (out, redirectParam)
-    })
   }
 }

@@ -1,12 +1,11 @@
-package issue.FpRs
+package issue
 
 import chisel3._
 import chisel3.util._
-import common.{ExuInput, MicroOp, Redirect}
+import common.{MicroOp, Redirect, XSModule}
 import execute.fu.fpu.FMAMidResult
-import issue.IssueBundle
 import xs.utils.Assertion.xs_assert
-import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper}
+import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, LogicShiftRight}
 sealed class TwoEntryQueuePtr extends CircularQueuePtr[TwoEntryQueuePtr](entries = 2) with HasCircularQueuePtrHelper
 sealed class PipelineEntry(bankIdxWidth:Int, entryIdxWidth:Int) extends Bundle{
   val uop = new MicroOp
@@ -15,11 +14,12 @@ sealed class PipelineEntry(bankIdxWidth:Int, entryIdxWidth:Int) extends Bundle{
   val bankIdxOH = UInt(bankIdxWidth.W)
   val entryIdxOH = UInt(entryIdxWidth.W)
 }
-class DecoupledPipeline(implementQueue:Boolean, bankIdxWidth:Int, entryIdxWidth:Int) extends Module{
+class DecoupledPipeline(implementQueue:Boolean, bankIdxWidth:Int, entryIdxWidth:Int) extends XSModule{
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
     val enq = Flipped(DecoupledIO(new PipelineEntry(bankIdxWidth, entryIdxWidth)))
     val deq = DecoupledIO(new PipelineEntry(bankIdxWidth, entryIdxWidth))
+    val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
   })
   if(implementQueue) {
     val mem = Reg(Vec(2, new PipelineEntry(bankIdxWidth, entryIdxWidth)))
@@ -29,15 +29,29 @@ class DecoupledPipeline(implementQueue:Boolean, bankIdxWidth:Int, entryIdxWidth:
     val empty = enqPtr.value === deqPtr.value && enqPtr.flag === deqPtr.flag
     val enqFire = io.enq.fire
     val deqFire = io.deq.fire
+
+    val shouldBeKilled = Wire(Vec(2, Bool()))
+    mem.map(_.uop).zip(shouldBeKilled).foreach({case(u, k) =>
+      val cancelHit = u.lpv.zip(io.earlyWakeUpCancel).map({ case (l, c) => l(0) && c }).reduce(_ || _)
+      val flushHit = u.robIdx.needFlush(io.redirect)
+      k := cancelHit | flushHit
+    })
+
     io.enq.ready := !full
     io.deq.valid := !empty
     io.deq.bits := mem(deqPtr.value)
+
+    mem.flatMap(_.uop.lpv).foreach(l =>{
+      when(l.orR){
+        l := LogicShiftRight(l, 1)
+      }
+    })
     when(enqFire){
       mem(enqPtr.value) := io.enq.bits
       enqPtr := enqPtr + 1.U
     }
-    when(deqFire || (io.deq.valid && io.deq.bits.uop.robIdx.needFlush(io.redirect))) {
-      when(full && mem(deqPtr.value + 1.U).uop.robIdx.needFlush(io.redirect)){
+    when(deqFire || (io.deq.valid && shouldBeKilled(deqPtr.value))) {
+      when(full && shouldBeKilled(deqPtr.value + 1.U)){
         deqPtr := deqPtr + 2.U
       }.otherwise{
         deqPtr := deqPtr + 1.U
