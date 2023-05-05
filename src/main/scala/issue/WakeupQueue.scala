@@ -2,6 +2,7 @@ package issue
 import chisel3._
 import chisel3.util._
 import common.{Redirect, SrcType, XSModule}
+import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
 class WakeupQueue(latency:Int) extends XSModule{
   val io = IO(new Bundle{
@@ -23,8 +24,8 @@ class WakeupQueue(latency:Int) extends XSModule{
     res.bits.lpv.zip(resDataReg.lpv).foreach({case(a,b) => a := LogicShiftRight(b, 1)})
     res
   }
-
   io.out := DelayInput(io.in, latency)
+  xs_assert(Mux(io.out.valid, !io.out.bits.robPtr.needFlush(io.redirect), true.B))
 }
 
 object WakeupQueue {
