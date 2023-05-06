@@ -189,7 +189,7 @@ object FuConfigs{
     fuType = FuType.ldu,
     numIntSrc = 1,
     numFpSrc = 0,
-    numVecSrc = 0,
+    numVecSrc = 1,
     writeIntRf = true,
     writeFpRf = true,
     writeVecRf = true,

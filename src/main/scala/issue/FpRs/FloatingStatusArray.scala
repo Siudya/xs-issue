@@ -28,7 +28,7 @@ import issue._
 import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
 
-object EntryState{
+protected[FpRs] object EntryState{
   def s_idle = 0.U
   def s_wait_for_mid = 1.U
   def s_mid_received = 2.U
@@ -165,8 +165,8 @@ class FloatingStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int) ext
   lpvModified.foreach(_.foreach(_ := false.B))
   for(((((newLpvs, oldLpvs),mod), st), psrc) <- miscNext.bits.lpv.zip(io.entry.bits.lpv).zip(lpvModified).zip(io.entry.bits.srcType).zip(io.entry.bits.psrc)){
     for(((((nl, ol), ewkp), m),idx) <- newLpvs.zip(oldLpvs).zip(io.loadEarlyWakeup).zip(mod).zipWithIndex){
-      val earlyWakeUpHit = ewkp.valid && ewkp.bits.pdest === psrc && st === SrcType.fp
-      val regularWakeupHits = io.wakeup.map(wkp => wkp.valid && wkp.bits.pdest === psrc && st === SrcType.fp)
+      val earlyWakeUpHit = ewkp.valid && ewkp.bits.pdest === psrc && st === ewkp.bits.destType
+      val regularWakeupHits = io.wakeup.map(wkp => wkp.valid && wkp.bits.pdest === psrc && st === wkp.bits.destType)
       val regularWakeupLpv = io.wakeup.map(wkp => wkp.bits.lpv(idx))
       val lpvUpdateHitsVec = regularWakeupHits :+ earlyWakeUpHit
       val lpvUpdateDataVec = regularWakeupLpv :+ ewkp.bits.lpv
