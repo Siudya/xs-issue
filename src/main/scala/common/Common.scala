@@ -233,6 +233,8 @@ class CtrlFlow extends XSBundle {
   val pd = new PreDecodeInfo
   val pred_taken = Bool()
   val exceptionVec = ExceptionVec()
+  val loadWaitBit = Bool()
+  val waitForRobIdx = new RobPtr // store set predicted previous store robIdx
   val storeSetHit = Bool() // inst has been allocated an store set
   val ssid = UInt(5.W)
   val ftqPtr = new FtqPtr
@@ -298,8 +300,6 @@ class MicroOp extends CfCtrl {
   val psrc = Vec(3, UInt(MaxRegfileIdxWidth.W))
   val pdest = UInt(MaxRegfileIdxWidth.W)
   val old_pdest = UInt(MaxRegfileIdxWidth.W)
-  val rsBankIdxOH = UInt(4.W)
-  val rsEntryIdxOH = UInt(maxEntryInOneRsBank.W)
   val robIdx = new RobPtr
   val lqIdx = new LqPtr
   val sqIdx = new SqPtr
