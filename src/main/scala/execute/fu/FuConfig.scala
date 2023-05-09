@@ -231,7 +231,7 @@ object FuConfigs{
   val mouCfg = FuConfig(
     name = "mou",
     fuType = FuType.mou,
-    numIntSrc = 1,
+    numIntSrc = 2,
     numFpSrc = 0,
     numVecSrc = 0,
     writeIntRf = false,
@@ -241,19 +241,5 @@ object FuConfigs{
     latency = Int.MaxValue,
     hasRedirect = false,
     exceptionOut = lduCfg.exceptionOut ++ staCfg.exceptionOut
-  )
-
-  val mouDataCfg = FuConfig(
-    name = "mou",
-    fuType = FuType.mou,
-    numIntSrc = 1,
-    numFpSrc = 0,
-    numVecSrc = 0,
-    writeIntRf = false,
-    writeFpRf = false,
-    writeVecRf = false,
-    writeFflags = false,
-    latency = Int.MaxValue,
-    hasRedirect = false
   )
 }

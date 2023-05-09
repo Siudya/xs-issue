@@ -30,12 +30,12 @@ import xs.utils.LogicShiftRight
 import issue.MemRs.EntryState._
 
 protected[MemRs] object EntryState{
-  def s_wait_st:UInt = 0.U
-  def s_ready:UInt = 1.U
-  def s_wait_cancel: UInt = 2.U
+  def s_ready:UInt = 0.U
+  def s_wait_cancel: UInt = 1.U
+  def s_issued: UInt = 2.U
   def s_wait_replay: UInt = 3.U
-  def s_wait_counter:UInt = 4.U
-  def s_issued: UInt = 5.U
+  def s_wait_st: UInt = 4.U
+  def s_wait_counter: UInt = 5.U
   def apply() = UInt(3.W)
 }
 
@@ -90,19 +90,19 @@ class MemoryStatusArrayEntry extends BasicStatusArrayEntry(2, false){
   val waitTarget = new RobPtr
 }
 
-class MemoryStatusArrayEntryUpdateNetwork(stuNum:Int, lduNum:Int, mouNum:Int, wakeupWidth:Int) extends Module{
+class MemoryStatusArrayEntryUpdateNetwork(stuNum:Int, wakeupWidth:Int) extends XSModule{
   val io = IO(new Bundle{
     val entry = Input(Valid(new MemoryStatusArrayEntry))
     val entryNext = Output(Valid(new MemoryStatusArrayEntry))
     val updateEnable = Output(Bool())
     val enq = Input(Valid(new MemoryStatusArrayEntry))
-    val staIssue = Input(Vec(stuNum, Bool()))
-    val stdIssue = Input(Vec(stuNum, Bool()))
-    val lduIssue = Input(Vec(lduNum, Bool()))
-    val mouIssue = Input(Vec(mouNum, Bool()))
+    val staIssue = Input(Bool())
+    val stdIssue = Input(Bool())
+    val lduIssue = Input(Bool())
+    val mouIssue = Input(Bool())
     val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
-    val loadEarlyWakeup = Input(Vec(lduNum, Valid(new EarlyWakeUpInfo)))
-    val earlyWakeUpCancel = Input(Vec(lduNum, Bool()))
+    val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
+    val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
     val stIssued = Input(Vec(stuNum, Valid(new RobPtr)))
     val replay = Input(Valid(UInt(5.W)))
     val redirect = Input(Valid(new Redirect))
@@ -137,8 +137,8 @@ class MemoryStatusArrayEntryUpdateNetwork(stuNum:Int, lduNum:Int, mouNum:Int, wa
   private val src0HasSpecWakeup = io.entry.bits.lpv(0).map(_.orR).reduce(_||_)
   private val src1HasSpecWakeup = io.entry.bits.lpv(1).map(_.orR).reduce(_||_)
   private val stIssueHit = io.stIssued.map(elm => elm.valid && elm.bits === io.entry.bits.waitTarget).reduce(_|_)
-  private val staLoadIssued = Cat(io.staIssue ++ io.lduIssue).orR
-  private val stdMouIssued = Cat(io.stdIssue ++ io.mouIssue).orR
+  private val staLoadIssued = io.staIssue || io.lduIssue
+  private val stdMouIssued = io.stdIssue || io.mouIssue
   private val staLoadState = io.entry.bits.staLoadState
   private val stdMouState = io.entry.bits.stdMouState
   private val staLoadStateNext = io.entryNext.bits.staLoadState
@@ -169,12 +169,12 @@ class MemoryStatusArrayEntryUpdateNetwork(stuNum:Int, lduNum:Int, mouNum:Int, wa
       is(s_wait_replay){
         when(needReplay){
           staLoadStateNext := s_wait_counter
-        }.elsewhen(counter === 1.U){
+        }.elsewhen(!(counter.orR)){
           staLoadStateNext := s_issued
         }
       }
       is(s_wait_counter){
-        when(counter === 1.U){
+        when(!(counter.orR)){
           staLoadStateNext := s_ready
         }
       }
@@ -291,7 +291,7 @@ class MemoryStatusArrayEntryUpdateNetwork(stuNum:Int, lduNum:Int, mouNum:Int, wa
   })
 }
 
-class MemoryStatusArray(entryNum:Int, stuNum:Int, lduNum:Int, mouNum:Int, wakeupWidth:Int) extends XSModule{
+class MemoryStatusArray(entryNum:Int, stuNum:Int, wakeupWidth:Int) extends XSModule{
   val io = IO(new Bundle{
     val redirect = Input(Valid(new Redirect))
 
@@ -307,17 +307,18 @@ class MemoryStatusArray(entryNum:Int, stuNum:Int, lduNum:Int, mouNum:Int, wakeup
       val data = new MemoryStatusArrayEntry
     }))
 
-    val staIssue = Input(Vec(stuNum, Valid(UInt(entryNum.W))))
-    val stdIssue = Input(Vec(stuNum, Valid(UInt(entryNum.W))))
-    val lduIssue = Input(Vec(lduNum, Valid(UInt(entryNum.W))))
-    val mouIssue = Input(Vec(mouNum, Valid(UInt(entryNum.W))))
+    val staIssue = Input(Valid(UInt(entryNum.W)))
+    val stdIssue = Input(Valid(UInt(entryNum.W)))
+    val lduIssue = Input(Valid(UInt(entryNum.W)))
+    val mouIssue = Input(Valid(UInt(entryNum.W)))
     val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(loadUnitNum, Valid(new EarlyWakeUpInfo)))
     val earlyWakeUpCancel = Input(Vec(loadUnitNum, Bool()))
-    val replay = Input(Vec(lduNum, Valid(new Bundle {
+    val replay = Input(Vec(2, Valid(new Bundle {
       val entryIdxOH = UInt(entryNum.W)
       val waitVal = UInt(5.W)
     })))
+    val stIssued = Input(Vec(stuNum, Valid(new RobPtr)))
   })
 
   private val statusArray = Reg(Vec(entryNum, new MemoryStatusArrayEntry))
@@ -349,9 +350,9 @@ class MemoryStatusArray(entryNum:Int, stuNum:Int, lduNum:Int, mouNum:Int, wakeup
   //Start of allocate logic
   io.allocateInfo := Cat(statusArrayValidAux.reverse)
   //End of allocate logic
-  private val stIssuedValidRegs = Reg(VecInit(Seq.fill(stuNum)(false.B)))
+  private val stIssuedValidRegs = RegInit(VecInit(Seq.fill(stuNum)(false.B)))
   private val stIssuedDataRegs = Reg(Vec(stuNum, new RobPtr))
-  stIssuedValidRegs.zip(stIssuedDataRegs).zip(io.staIssue).foreach({case((v, d), in) =>
+  stIssuedValidRegs.zip(stIssuedDataRegs).zip(io.stIssued).foreach({case((v, d), in) =>
     v := in.valid
     when(in.valid){
       d := in.bits
@@ -362,23 +363,25 @@ class MemoryStatusArray(entryNum:Int, stuNum:Int, lduNum:Int, mouNum:Int, wakeup
     .zip(statusArray)
     .zipWithIndex
       ){
-    val updateNetwork = Module(new MemoryStatusArrayEntryUpdateNetwork(stuNum, lduNum, mouNum, wakeupWidth))
+    val updateNetwork = Module(new MemoryStatusArrayEntryUpdateNetwork(stuNum,wakeupWidth))
     updateNetwork.io.entry.valid := v
     updateNetwork.io.entry.bits := d
     updateNetwork.io.enq.valid := io.enq.valid & io.enq.bits.addrOH(idx)
     updateNetwork.io.enq.bits := io.enq.bits.data
-    updateNetwork.io.staIssue := VecInit(io.staIssue.map(i => i.valid & i.bits(idx)))
-    updateNetwork.io.stdIssue := VecInit(io.stdIssue.map(i => i.valid & i.bits(idx)))
-    updateNetwork.io.lduIssue := VecInit(io.lduIssue.map(i => i.valid & i.bits(idx)))
-    updateNetwork.io.mouIssue := VecInit(io.mouIssue.map(i => i.valid & i.bits(idx)))
+    updateNetwork.io.staIssue := io.staIssue.valid && io.mouIssue.bits(idx)
+    updateNetwork.io.stdIssue := io.stdIssue.valid && io.mouIssue.bits(idx)
+    updateNetwork.io.lduIssue := io.lduIssue.valid && io.mouIssue.bits(idx)
+    updateNetwork.io.mouIssue := io.mouIssue.valid && io.mouIssue.bits(idx)
     updateNetwork.io.wakeup := io.wakeup
     updateNetwork.io.loadEarlyWakeup := io.loadEarlyWakeup
     updateNetwork.io.earlyWakeUpCancel := io.earlyWakeUpCancel
 
-    updateNetwork.io.replay.valid := io.replay.valid & io.replay.bits.entryIdxOH(idx)
-    updateNetwork.io.replay.bits := io.replay.bits.waitVal
+    val replaySels = io.replay.map(r => r.valid && r.bits.entryIdxOH(idx))
+    val replayVals = io.replay.map(_.bits.waitVal)
+    updateNetwork.io.replay.valid := replaySels.reduce(_|_)
+    updateNetwork.io.replay.bits := Mux1H(replaySels, replayVals)
     updateNetwork.io.redirect := io.redirect
-
+    xs_assert(PopCount(replaySels) === 1.U || PopCount(replaySels) === 0.U)
     updateNetwork.io.stIssued.zip(stIssuedValidRegs).zip(stIssuedDataRegs).foreach({case((p, v), d) =>
       p.valid := v
       p.bits := d
@@ -395,7 +398,7 @@ class MemoryStatusArray(entryNum:Int, stuNum:Int, lduNum:Int, mouNum:Int, wakeup
   xs_assert(Cat(statusArrayValid) === Cat(statusArrayValidAux))
   xs_assert(Mux(io.enq.valid, PopCount(io.enq.bits.addrOH) === 1.U, true.B))
   xs_assert((Mux(io.enq.valid, io.enq.bits.addrOH, 0.U) & Cat(statusArrayValid.reverse)) === 0.U)
-  private val issues = io.staIssue ++ io.stdIssue ++ io.lduIssue ++ io.mouIssue
+  private val issues = Seq(io.staIssue, io.stdIssue, io.lduIssue, io.mouIssue)
   for(iss <- issues){
     xs_assert(PopCount(Mux(iss.valid, iss.bits, 0.U) & Cat(statusArrayValid.reverse)) === 1.U)
   }

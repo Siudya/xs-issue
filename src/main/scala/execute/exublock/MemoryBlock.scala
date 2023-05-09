@@ -36,12 +36,12 @@ class MemoryBlock (loadNum:Int, storeNum:Int, atomicNum:Int)(implicit p:Paramete
       exuType = ExuType.std
     )
   })
-  private val stdMouParams = Seq.tabulate(storeNum - atomicNum)(idx => {
+  private val stdMouParams = Seq.tabulate(atomicNum)(idx => {
     ExuConfig(
       name = "StdMouExu",
       id = idx,
       complexName = "MemoryBlock",
-      fuConfigs = Seq(FuConfigs.stdCfg, FuConfigs.mouCfg, FuConfigs.mouDataCfg),
+      fuConfigs = Seq(FuConfigs.stdCfg, FuConfigs.mouCfg),
       exuType = ExuType.mou
     )
   })
@@ -66,36 +66,48 @@ class MemoryBlockImpl(outer:MemoryBlock) extends BasicExuBlockImp(outer){
 
   private val lduIssues = outer.lduIssueNodes.map(iss => {
     require(iss.in.length == 1)
+    dontTouch(iss.in.head._1)
     iss.in.head
   })
   private val staIssues = outer.staIssueNodes.map(iss => {
     require(iss.in.length == 1)
+    dontTouch(iss.in.head._1)
     iss.in.head
   })
   private val stdIssues = outer.stdIssueNodes.map(iss => {
     require(iss.in.length == 1)
+    dontTouch(iss.in.head._1)
     iss.in.head
   })
   private val stdMouIssues = outer.stdMouIssueNodes.map(iss => {
     require(iss.in.length == 1)
+    dontTouch(iss.in.head._1)
     iss.in.head
   })
   private val lduWritebacks = outer.lduWritebackNodes.map(wb => {
     require(wb.out.length == 1)
+    dontTouch(wb.out.head._1)
     wb.out.head
   })
   private val staWritebacks = outer.staWritebackNodes.map(wb => {
     require(wb.out.length == 1)
+    dontTouch(wb.out.head._1)
     wb.out.head
   })
   private val stdWritebacks = outer.stdWritebackNodes.map(wb => {
     require(wb.out.length == 1)
+    dontTouch(wb.out.head._1)
     wb.out.head
   })
   private val stdMouWritebacks = outer.stdMouWritebackNodes.map(wb => {
     require(wb.out.length == 1)
+    dontTouch(wb.out.head._1)
     wb.out.head
   })
+  val io = IO(new Bundle{
+    val earlyWakeUpCancel = Output(Vec(lduIssues.length, Bool()))
+  })
+  io.earlyWakeUpCancel := DontCare
 
 }
 

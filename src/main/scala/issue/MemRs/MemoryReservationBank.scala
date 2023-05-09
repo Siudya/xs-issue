@@ -3,12 +3,12 @@ package issue.MemRs
 import issue._
 import chisel3._
 import chisel3.util._
-import common.{FuType, MicroOp, Redirect}
+import common.{FuType, MicroOp, Redirect, RobPtr}
 import issue.MemRs.EntryState._
 import issue.{EarlyWakeUpInfo, WakeUpInfo}
 
-class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, mouNum:Int, wakeupWidth:Int) extends Module{
-  private val issueWidth = stuNum * 2 + lduNum + mouNum
+class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, wakeupWidth:Int) extends Module{
+  private val issueWidth = 4
   val io = IO(new Bundle {
     val redirect = Input(Valid(new Redirect))
 
@@ -23,19 +23,20 @@ class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, mouNum:Int, wa
       val data = new MicroOp
     }))
 
-    val staIssue = Input(Vec(stuNum, Valid(UInt(entryNum.W))))
-    val stdIssue = Input(Vec(stuNum, Valid(UInt(entryNum.W))))
-    val lduIssue = Input(Vec(lduNum, Valid(UInt(entryNum.W))))
-    val mouIssue = Input(Vec(mouNum, Valid(UInt(entryNum.W))))
-    val staIssueUop = Output(Vec(stuNum, Valid(new MicroOp)))
-    val stdIssueUop = Output(Vec(stuNum, Valid(new MicroOp)))
-    val lduIssueUop = Output(Vec(lduNum, Valid(new MicroOp)))
-    val mouIssueUop = Output(Vec(mouNum, Valid(new MicroOp)))
+    val staIssue = Input(Valid(UInt(entryNum.W)))
+    val stdIssue = Input(Valid(UInt(entryNum.W)))
+    val lduIssue = Input(Valid(UInt(entryNum.W)))
+    val mouIssue = Input(Valid(UInt(entryNum.W)))
+    val staIssueUop = Output(new MicroOp)
+    val stdIssueUop = Output(new MicroOp)
+    val lduIssueUop = Output(new MicroOp)
+    val mouIssueUop = Output(new MicroOp)
 
-    val replay = Input(Vec(lduNum, Valid(new Bundle {
+    val replay = Input(Vec(2, Valid(new Bundle {
       val entryIdxOH = UInt(entryNum.W)
       val waitVal = UInt(5.W)
     })))
+    val stIssued = Input(Vec(stuNum, Valid(new RobPtr)))
 
     val wakeup = Input(Vec(wakeupWidth, Valid(new WakeUpInfo)))
     val loadEarlyWakeup = Input(Vec(lduNum, Valid(new EarlyWakeUpInfo)))
@@ -43,7 +44,7 @@ class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, mouNum:Int, wa
   })
 
 
-  private val statusArray = Module(new MemoryStatusArray(entryNum, stuNum, lduNum, mouNum, wakeupWidth:Int))
+  private val statusArray = Module(new MemoryStatusArray(entryNum, stuNum, wakeupWidth:Int))
   private val payloadArray = Module(new PayloadArray(new MicroOp, entryNum, issueWidth, "IntegerPayloadArray"))
 
   private def EnqToEntry(in: MicroOp): MemoryStatusArrayEntry = {
@@ -63,6 +64,8 @@ class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, mouNum:Int, wa
     enqEntry.staLoadState := Mux(in.ctrl.fuType === FuType.ldu, Mux(in.cf.loadWaitBit, s_wait_st, s_ready), Mux(in.ctrl.fuType === FuType.stu, s_ready, s_issued))
     enqEntry.stdMouState := Mux(in.ctrl.fuType === FuType.mou || in.ctrl.fuType === FuType.stu, s_ready, s_issued)
     enqEntry.waitTarget := in.cf.waitForRobIdx
+    enqEntry.isFirstIssue := false.B
+    enqEntry.counter := 0.U
     enqEntry
   }
 
@@ -80,6 +83,7 @@ class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, mouNum:Int, wa
   statusArray.io.lduIssue := io.lduIssue
   statusArray.io.mouIssue := io.mouIssue
   statusArray.io.replay := io.replay
+  statusArray.io.stIssued := io.stIssued
   statusArray.io.wakeup := io.wakeup
   statusArray.io.loadEarlyWakeup := io.loadEarlyWakeup
   statusArray.io.earlyWakeUpCancel := io.earlyWakeUpCancel
@@ -87,13 +91,12 @@ class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, mouNum:Int, wa
   payloadArray.io.write.en := io.enq.valid
   payloadArray.io.write.addr := io.enq.bits.addrOH
   payloadArray.io.write.data := io.enq.bits.data
-  private val issueVec = io.staIssue ++ io.stdIssue ++ io.lduIssue ++ io.mouIssue
-  private val issueUopVec = io.staIssueUop ++ io.stdIssueUop ++ io.lduIssueUop ++ io.mouIssueUop
+  private val issueVec = Seq(io.staIssue, io.stdIssue, io.lduIssue, io.mouIssue)
+  private val issueUopVec = Seq(io.staIssueUop, io.stdIssueUop, io.lduIssueUop, io.mouIssueUop)
   payloadArray.io.read.zip(issueVec).zip(issueUopVec).foreach({
-    case((port, iAddr), iData) =>{
-      port.addr := iAddr.bits
-      iData.bits := port.data
-      iData.valid := iAddr.valid
+    case((port, issAddr), issData) =>{
+      port.addr := issAddr.bits
+      issData := port.data
     }
   })
 }

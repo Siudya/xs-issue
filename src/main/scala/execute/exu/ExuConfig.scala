@@ -40,7 +40,7 @@ object ExuType{
   )
 
   def intTypes: Seq[Int] = Seq(jmp, alu, mul, div, i2f)
-  def memTypes: Seq[Int] = Seq(ldu, sta, std)
+  def memTypes: Seq[Int] = Seq(ldu, sta, std, mou)
   def fpTypes: Seq[Int] = Seq(fmisc, fmac, fdiv)
   def vecTypes: Seq[Int] = Seq(vred, vmisc, vfp, vint)
   def typeToString(in:Int):String = mapping(in)

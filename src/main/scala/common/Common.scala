@@ -5,6 +5,7 @@ import chisel3._
 import chisel3.util._
 import execute.exu.ExuConfig
 import execute.fu.{FuConfig, FuInput}
+import issue.RsIdx
 import xs.utils.{CircularQueuePtr, HasCircularQueuePtrHelper, SignExt, ZeroExt}
 import xs.utils._
 
@@ -325,7 +326,7 @@ trait XSParam{
   def GprIdxWidth = log2Ceil(GprEntriesNum)
   def FprIdxWidth = log2Ceil(FprEntriesNum)
   def MaxRegfileIdxWidth = if (GprIdxWidth > FprIdxWidth) GprIdxWidth else FprIdxWidth
-  val LpvLength = 4
+  val LpvLength = 5
   val loadUnitNum = 2
   val XLEN = 64
   val VAddrBits = 39
@@ -424,33 +425,28 @@ case class Imm_LUI_LOAD() {
 }
 
 object RSFeedbackType {
-  val tlbMiss = 0.U(3.W)
-  val mshrFull = 1.U(3.W)
-  val dataInvalid = 2.U(3.W)
-  val bankConflict = 3.U(3.W)
-  val ldVioCheckRedo = 4.U(3.W)
-
-  val feedbackInvalid = 7.U(3.W)
-
-  def apply() = UInt(3.W)
+  val tlbMiss = (1 << 3).U(7.W)
+  val mshrFull = (1 << 3).U(7.W)
+  val dataInvalid = (1 << 0).U(7.W)
+  val bankConflict = (1 << 0).U(7.W)
+  val ldVioCheckRedo = (1 << 0).U(7.W)
+  val feedbackInvalid = (1 << 2).U(7.W)
+  def apply() = UInt(7.W)
 }
 
 
-class RSFeedbackIO extends XSBundle{
+class RSFeedbackIO(bankNum:Int, entriesNum:Int) extends XSBundle{
   // Note: you need to update in implicit Parameters p before imp MemRSFeedbackIO
   // for instance: MemRSFeedbackIO()(updateP)
-  val feedbackSlow = ValidIO(new RSFeedback()) // dcache miss queue full, dtlb miss
-  val feedbackFast = ValidIO(new RSFeedback()) // bank conflict
-  val rsIdx = Input(UInt(log2Up(IssQueSize).W))
+  val feedbackSlow = ValidIO(new RSFeedback(bankNum, entriesNum)) // dcache miss queue full, dtlb miss
+  val feedbackFast = ValidIO(new RSFeedback(bankNum, entriesNum)) // bank conflict
   val isFirstIssue = Input(Bool())
 }
 
-class RSFeedback extends XSBundle {
-  val rsIdx = UInt(log2Up(IssQueSize).W)
-  val hit = Bool()
+class RSFeedback(bankNum:Int, entriesNum:Int) extends XSBundle {
+  val rsIdx = new RsIdx(bankNum, entriesNum)
   val flushState = Bool()
   val sourceType = RSFeedbackType()
-  val dataInvalidSqIdx = new SqPtr
 }
 
 

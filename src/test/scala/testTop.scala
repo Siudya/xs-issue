@@ -7,9 +7,10 @@ import regfile.{PcMem, PcWritePort, RegFileTop}
 import chisel3._
 import chisel3.util._
 import execute.exu.FenceIO
-import execute.exublock.{FloatingBlock, IntegerBlock}
+import execute.exublock.{FloatingBlock, IntegerBlock, MemoryBlock}
 import issue.FpRs.FloatingReservationStation
 import issue.IntRs.IntegerReservationStation
+import issue.MemRs.MemoryReservationStation
 import issue.{EarlyWakeUpInfo, RsIssueNode}
 import writeback.WriteBackNetwork
 
@@ -27,14 +28,17 @@ class TestTop(implicit p:Parameters) extends LazyModule{
   private val pcMemEntries = 64
   private val integerBlock = LazyModule(new IntegerBlock(2, 1, 1, 1))
   private val floatingBlock = LazyModule(new FloatingBlock(2, 1, 1))
+  private val memoryBlock = LazyModule(new MemoryBlock(2, 2, 1))
   private val integerReservationStation = LazyModule(new IntegerReservationStation(4, 16))
   private val floatingReservationStation = LazyModule(new FloatingReservationStation(4, 16))
+  private val memoryReservationStation = LazyModule(new MemoryReservationStation(4, 16, 6))
   private val writebackNetwork = LazyModule(new WriteBackNetwork)
   private val regFile = LazyModule(new RegFileTop)
-  private val exuBlocks = integerBlock :: floatingBlock :: Nil
+  private val exuBlocks = integerBlock :: floatingBlock :: memoryBlock :: Nil
 
   regFile.issueNode :*= integerReservationStation.issueNode
   regFile.issueNode :*= floatingReservationStation.issueNode
+  regFile.issueNode :*= memoryReservationStation.issueNode
   for (eb <- exuBlocks) {
     eb.issueNode :*= regFile.issueNode
     writebackNetwork.node :=* eb.writebackNode
@@ -42,6 +46,7 @@ class TestTop(implicit p:Parameters) extends LazyModule{
   regFile.writebackNode :=* writebackNetwork.node
   floatingReservationStation.wakeupNode := writebackNetwork.node
   integerReservationStation.wakeupNode := writebackNetwork.node
+  memoryReservationStation.wakeupNode := writebackNetwork.node
 
   lazy val module = new LazyModuleImp(this){
     private val redirectOutNum = writebackNetwork.node.in.count(_._2.hasRedirectOut)
@@ -49,9 +54,8 @@ class TestTop(implicit p:Parameters) extends LazyModule{
       val redirectIn = Input(Valid(new Redirect))
       val enqInt = Vec(4, Flipped(DecoupledIO(new MicroOp)))
       val enqFp = Vec(4, Flipped(DecoupledIO(new MicroOp)))
+      val enqMem = Vec(4, Flipped(DecoupledIO(new MicroOp)))
       val redirectOut = Output(Vec(redirectOutNum, Valid(new Redirect)))
-      val loadEarlyWakeup = Input(Vec(2, Valid(new EarlyWakeUpInfo)))
-      val earlyWakeUpCancel = Input(Vec(2, Bool()))
       val fenceio = new FenceIO
       val pcMemWrite = new PcWritePort(log2Ceil(pcMemEntries))
     })
@@ -59,18 +63,22 @@ class TestTop(implicit p:Parameters) extends LazyModule{
 
     integerReservationStation.module.io.redirect := io.redirectIn
     integerReservationStation.module.io.enq <> io.enqInt
-    integerReservationStation.module.io.loadEarlyWakeup := io.loadEarlyWakeup
-    integerReservationStation.module.io.earlyWakeUpCancel := io.earlyWakeUpCancel
+    integerReservationStation.module.io.loadEarlyWakeup := memoryReservationStation.module.io.loadEarlyWakeup
+    integerReservationStation.module.io.earlyWakeUpCancel := memoryBlock.module.io.earlyWakeUpCancel
 
     floatingReservationStation.module.io.redirect := io.redirectIn
     floatingReservationStation.module.io.enq <> io.enqFp
-    floatingReservationStation.module.io.loadEarlyWakeup := io.loadEarlyWakeup
-    floatingReservationStation.module.io.earlyWakeUpCancel := io.earlyWakeUpCancel
+    floatingReservationStation.module.io.loadEarlyWakeup := memoryReservationStation.module.io.loadEarlyWakeup
+    floatingReservationStation.module.io.earlyWakeUpCancel := memoryBlock.module.io.earlyWakeUpCancel
+
+    memoryReservationStation.module.io.redirect := io.redirectIn
+    memoryReservationStation.module.io.enq <> io.enqMem
+    memoryReservationStation.module.io.specWakeup := integerReservationStation.module.io.specWakeup
+    memoryReservationStation.module.io.earlyWakeUpCancel := memoryBlock.module.io.earlyWakeUpCancel
 
     private val pcMem = Module(new PcMem(pcMemEntries, regFile.module.pcReadNum, 1))
     pcMem.io.write.head := io.pcMemWrite
 
-    regFile.module.io.redirect := io.redirectIn
     pcMem.io.read.zip(regFile.module.io.pcReadAddr).foreach({case(r, addr) => r.addr := addr})
     regFile.module.io.pcReadData.zip(pcMem.io.read).foreach({case(data, r) => data := r.data})
 

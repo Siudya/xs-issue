@@ -4,7 +4,7 @@ import chisel3.util._
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import chipsalliance.rocketchip.config.Parameters
 import chisel3.experimental.prefix
-import common.{ExuInput, Ftq_RF_Components, MicroOp, Redirect, XSParam}
+import common.{ExuInput, Ftq_RF_Components, FuType, MicroOp, Redirect, SrcType, XSParam}
 import execute.fu.fpu.FMAMidResult
 import issue.RsIdx
 import writeback.{WriteBackSinkNode, WriteBackSinkParam, WriteBackSinkType}
@@ -15,8 +15,9 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
 
   lazy val module = new LazyModuleImp(this) with XSParam {
     val pcReadNum:Int = issueNode.out.count(_._2._2.hasJmp) * 2 + issueNode.out.count(_._2._2.hasLoad)
+    println("\nRegfile Configuration:")
+    println(s"PC read num: $pcReadNum")
     val io = IO(new Bundle{
-      val redirect = Input(Valid(new Redirect))
       val pcReadAddr = Output(Vec(pcReadNum, UInt(log2Ceil(FtqSize).W)))
       val pcReadData = Input(Vec(pcReadNum, new Ftq_RF_Components))
     })
@@ -24,6 +25,9 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
     require(issueNode.in.count(_._2._1.isMemRs) <= 1)
     require(issueNode.in.count(_._2._1.isFpRs) <= 1)
     require(writebackNode.in.length == 1)
+    require(issueNode.out.count(_._2._2.hasJmp) == 1)
+    require(issueNode.out.count(_._2._2.hasMou) == 1)
+
     private val wb = writebackNode.in.flatMap(i => i._1.zip(i._2))
 
     private val fromRs = issueNode.in.flatMap(i => i._1.zip(i._2._2).map(e => (e._1, e._2, i._2._1)))
@@ -44,7 +48,7 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
     private val intWriteBackSinks = intRf.io.write ++ intRf.io.bypassWrite
     private val intWriteBackSources = writeIntRf ++ writeIntRfBypass
     intWriteBackSinks.zip(intWriteBackSources.map(_._1)).foreach({case(sink, source) =>
-      sink.en := source.valid && !source.bits.uop.robIdx.needFlush(io.redirect) && source.bits.uop.ctrl.rfWen
+      sink.en := source.valid && source.bits.uop.ctrl.rfWen
       sink.addr := source.bits.uop.pdest
       sink.data := source.bits.data
     })
@@ -52,7 +56,7 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
     private val fpWriteBackSinks = fpRf.io.write ++ fpRf.io.bypassWrite
     private val fpWriteBackSources = writeFpRf ++ writeFpRfBypass
     fpWriteBackSinks.zip(fpWriteBackSources.map(_._1)).foreach({ case (sink, source) =>
-      sink.en := source.valid && !source.bits.uop.robIdx.needFlush(io.redirect) && source.bits.uop.ctrl.fpWen
+      sink.en := source.valid && source.bits.uop.ctrl.fpWen
       sink.addr := source.bits.uop.pdest
       sink.data := source.bits.data
     })
@@ -66,7 +70,6 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
     private var intRfReadIdx = 0
     private var fpRfReadIdx = 0
     private var pcReadPortIdx = 0
-
     for(in <- fromRs){
       val out = toExuMap(in._2)
       val rsParam = in._3
@@ -108,6 +111,42 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
           val midResultLo = bi.issue.bits.src(0)
           val midResultHi = bi.fmaMidState.in.bits.asUInt(midResultWidth - 1, XLEN)
           midResultBundle.bits := Cat(midResultHi, midResultLo).asTypeOf(new FMAMidResult)
+        } else if(exuComplexParam.isSta) {
+          intRf.io.read(intRfReadIdx).addr := bi.issue.bits.uop.psrc(0)
+          exuInBundle.src(0) := intRf.io.read(intRfReadIdx).data
+          intRfReadIdx = intRfReadIdx + 1
+        } else if(exuComplexParam.isLdu) {
+          val issueBundle = WireInit(bi.issue.bits)
+          io.pcReadAddr(pcReadPortIdx) := bi.issue.bits.uop.cf.ftqPtr.value
+          intRf.io.read(intRfReadIdx).addr := bi.issue.bits.uop.psrc(0)
+          issueBundle.src(0) := intRf.io.read(intRfReadIdx).data
+          issueBundle.uop.cf.pc := io.pcReadData(pcReadPortIdx).getPc(bi.issue.bits.uop.cf.ftqOffset)
+          exuInBundle := ImmExtractor(exuComplexParam, issueBundle)
+          intRfReadIdx = intRfReadIdx + 1
+          pcReadPortIdx = pcReadPortIdx + 1
+        } else if(exuComplexParam.isStd) {
+          intRf.io.read(intRfReadIdx).addr := bi.issue.bits.uop.psrc(1)
+          fpRf.io.read(fpRfReadIdx).addr := bi.issue.bits.uop.psrc(1)
+          val intData = intRf.io.read(intRfReadIdx).data
+          val fpData = fpRf.io.read(fpRfReadIdx).data
+          val srcIsInt = bi.issue.bits.uop.ctrl.srcType(1) === SrcType.reg
+          exuInBundle.src(0) := Mux(srcIsInt, intData, fpData)
+          intRfReadIdx = intRfReadIdx + 1
+          fpRfReadIdx = fpRfReadIdx + 1
+        } else {
+          //STD MOU
+          intRf.io.read(intRfReadIdx).addr := bi.issue.bits.uop.psrc(0)
+          intRf.io.read(intRfReadIdx + 1).addr := bi.issue.bits.uop.psrc(1)
+          fpRf.io.read(fpRfReadIdx).addr := bi.issue.bits.uop.psrc(1)
+          val intData0 = intRf.io.read(intRfReadIdx).data
+          val intData1 = intRf.io.read(intRfReadIdx + 1).data
+          val fpData = fpRf.io.read(fpRfReadIdx).data
+          val srcIsInt = bi.issue.bits.uop.ctrl.srcType(1) === SrcType.reg
+          val isMou = bi.issue.bits.uop.ctrl.fuType === FuType.mou
+          exuInBundle.src(0) := Mux(isMou, intData0, Mux(srcIsInt, intData1, fpData))
+          exuInBundle.src(1) := intData1
+          intRfReadIdx = intRfReadIdx + 2
+          fpRfReadIdx = fpRfReadIdx + 1
         }
 
         val issueValidReg = RegInit(false.B)
@@ -118,6 +157,7 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
 
         val allowPipe = !issueValidReg || bo.issue.fire
         bi.fuInFire := bo.issue.fire
+        bi.issue.ready := allowPipe
         bo.issue.valid := issueValidReg
         bo.issue.bits := issueExuInReg
         bo.fmaMidState.in := midResultReg
@@ -126,7 +166,7 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
         when(allowPipe) {
           issueValidReg := bi.issue.valid
         }
-        when(allowPipe && bi.issue.valid) {
+        when(bi.issue.fire) {
           issueExuInReg := exuInBundle
           midResultReg := midResultBundle
           fmaWaitAddReg := bi.fmaMidState.waitForAdd
