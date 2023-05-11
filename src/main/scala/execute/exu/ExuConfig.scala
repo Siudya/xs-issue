@@ -13,12 +13,10 @@ object ExuType{
   def fmisc = 7
   def fmac = 8
   def fdiv = 9
-  def i2f = 10
-  def vred = 11
-  def vmisc = 12
-  def vfp = 13
-  def vint = 14
-  def mou = 15
+  def vred = 10
+  def vmisc = 11
+  def vfp = 12
+  def vint = 13
 
   private val mapping = Map(
     jmp -> "jmp",
@@ -31,16 +29,14 @@ object ExuType{
     fmisc -> "fmisc",
     fmac -> "fmac",
     fdiv -> "fdiv",
-    i2f -> "i2f",
     vred -> "vred",
     vmisc -> "vmisc",
     vfp -> "vfp",
-    vint -> "vint",
-    mou -> "mou"
+    vint -> "vint"
   )
 
-  def intTypes: Seq[Int] = Seq(jmp, alu, mul, div, i2f)
-  def memTypes: Seq[Int] = Seq(ldu, sta, std, mou)
+  def intTypes: Seq[Int] = Seq(jmp, alu, mul, div)
+  def memTypes: Seq[Int] = Seq(ldu, sta, std)
   def fpTypes: Seq[Int] = Seq(fmisc, fmac, fdiv)
   def vecTypes: Seq[Int] = Seq(vred, vmisc, vfp, vint)
   def typeToString(in:Int):String = mapping(in)
@@ -69,7 +65,6 @@ case class ExuConfig
   val wakeUpIntRs = fuConfigs.map(_.writeIntRf).reduce(_||_) && !hasFastWakeup
   val wakeUpFpRs = fuConfigs.map(_.writeFpRf).reduce(_||_) && !hasFastWakeup
   val wakeUpMemRs =  fuConfigs.map(e => e.writeIntRf || e.writeFpRf).reduce(_||_) && !hasFastWakeup
-  val writeFloatFlags = fuConfigs.map(_.writeFflags).reduce(_||_)
   val hasRedirectOut = fuConfigs.map(_.hasRedirect).reduce(_||_)
   val isIntType = ExuType.intTypes.contains(exuType)
   val isMemType = ExuType.memTypes.contains(exuType)

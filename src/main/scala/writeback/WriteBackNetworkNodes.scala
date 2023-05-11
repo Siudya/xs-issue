@@ -31,7 +31,6 @@ case class WriteBackSinkParam
   def isMemRs = sinkType == WriteBackSinkType.memRs
   def isFpRs = sinkType == WriteBackSinkType.fpRs
   def isLegal = isRegFile ||isRob ||isIntRs ||isMemRs ||isFpRs
-  def needWakeup = isIntRs || isMemRs || isFpRs || isRob
   def needWriteback = isRegFile
 }
 
@@ -43,7 +42,6 @@ object WriteBackNetworkNodeInwardImpl extends InwardNodeImp[ExuConfig, Option[Ex
 object WriteBackNetworkNodeOutwardImpl extends OutwardNodeImp[Seq[ExuConfig], WriteBackSinkParam, (WriteBackSinkParam, Seq[ExuConfig]), Vec[Valid[ExuOutput]]]{
   override def edgeO(pd: Seq[ExuConfig], pu: WriteBackSinkParam, p: config.Parameters, sourceInfo: SourceInfo): (WriteBackSinkParam, Seq[ExuConfig]) = {
     require(pu.isLegal)
-
     val resPd = if (pu.isRegFile) {
       pd.filter(cfg => cfg.writeIntRf || cfg.writeFpRf || cfg.writeVecRf )
     } else if (pu.isIntRs) {
@@ -55,12 +53,26 @@ object WriteBackNetworkNodeOutwardImpl extends OutwardNodeImp[Seq[ExuConfig], Wr
     } else {
       pd
     }
-    (pu,pd)
+    (pu,resPd)
   }
   override def bundleO(eo: (WriteBackSinkParam, Seq[ExuConfig])): Vec[ValidIO[ExuOutput]] = Vec(eo._2.length, Valid(new ExuOutput))
 }
 object WriteBackSinkNodeImpl extends SimpleNodeImp[Seq[ExuConfig], WriteBackSinkParam, Seq[ExuConfig], Vec[Valid[ExuOutput]]]{
-  override def edge(pd: Seq[ExuConfig], pu: WriteBackSinkParam, p: config.Parameters, sourceInfo: SourceInfo): Seq[ExuConfig] = pd
+  override def edge(pd: Seq[ExuConfig], pu: WriteBackSinkParam, p: config.Parameters, sourceInfo: SourceInfo): Seq[ExuConfig] = {
+    require(pu.isLegal)
+    val resPd = if (pu.isRegFile) {
+      pd.filter(cfg => cfg.writeIntRf || cfg.writeFpRf || cfg.writeVecRf)
+    } else if (pu.isIntRs) {
+      pd.filter(_.wakeUpIntRs)
+    } else if (pu.isMemRs) {
+      pd.filter(_.wakeUpMemRs)
+    } else if (pu.isFpRs) {
+      pd.filter(_.wakeUpFpRs)
+    } else {
+      pd
+    }
+    resPd
+  }
   override def bundle(e: Seq[ExuConfig]): Vec[ValidIO[ExuOutput]] = Vec(e.length, Valid(new ExuOutput))
   override def render(e: Seq[ExuConfig]): RenderedEdge = RenderedEdge(colour = "#0000ff",label = "writeback")
 }

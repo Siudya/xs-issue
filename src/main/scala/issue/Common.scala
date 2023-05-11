@@ -41,12 +41,12 @@ case class RsParam
   rsType:Int,
   entriesNum:Int = 48,
   speckWakeupPort:Int,
-  //Unchangeable parameters
-  bankNum:Int = 4,
-  passThroughIntRf:Boolean = false,
-  passThroughFpRf:Boolean = false,
-  passThroughVecRf:Boolean = false
+
 ){
+  //Unchangeable parameters
+  val bankNum = 4
+  require(entriesNum % bankNum == 0)
+  val entryNumPerBank = entriesNum / bankNum
   val isIntRs = rsType == RsType.int
   val isMemRs = rsType == RsType.mem
   val isFpRs = rsType == RsType.fp
@@ -73,13 +73,13 @@ case class DispatchParam
 )
 class IssueBundle(bankNum:Int, entryNum:Int) extends XSBundle {
   val issue = DecoupledIO(new ExuInput)
-  val rsIdx = Output(new RsIdx(bankNum, entryNum))
+  val rsIdx = Output(new RsIdx(bankNum, entryNum / bankNum))
   val fmaMidState = Flipped(new FMAMidResultIO)
   val fuInFire = Input(Bool())
   val rsFeedback = Flipped(new RSFeedbackIO(bankNum, entryNum))
 }
 
-class RsIdx(bankNum:Int, entryNum:Int) extends Bundle{
+class RsIdx(bankNum:Int, entryNumPerBank:Int) extends Bundle{
   val bankIdxOH = UInt(bankNum.W)
-  val entryIdxOH = UInt(entryNum.W)
+  val entryIdxOH = UInt(entryNumPerBank.W)
 }

@@ -5,6 +5,7 @@ import chipsalliance.rocketchip.config.Parameters
 import common.{ExuOutput, FuType, XSParam}
 import execute.fu.{FuConfigs, FuOutput}
 import execute.fu.bku.Bku
+import execute.fu.fpu.IntToFP
 import execute.fu.mdu.{ArrayMultiplier, MDUOpType}
 import xs.utils.Assertion.xs_assert
 import xs.utils.{LookupTree, ParallelMux, SignExt, ZeroExt}
@@ -14,7 +15,7 @@ class MulExu(id:Int, complexName:String, val bypassInNum:Int)(implicit p:Paramet
     name = "MulExu",
     id = id,
     complexName = complexName,
-    fuConfigs = Seq(FuConfigs.mulCfg, FuConfigs.bkuCfg),
+    fuConfigs = Seq(FuConfigs.mulCfg, FuConfigs.bkuCfg, FuConfigs.i2fCfg),
     exuType = ExuType.mul
   )
   val issueNode = new ExuInputNode(cfg)
@@ -32,23 +33,22 @@ class MulExuImpl(outer:MulExu, exuCfg:ExuConfig)(implicit p:Parameters) extends 
 
   private val mul = Module(new ArrayMultiplier(XLEN + 1)(p))
   private val bku = Module(new Bku)
+  private val i2f = Module(new IntToFP)
 
   issuePort.issue.ready := true.B
   issuePort.fmaMidState.out := DontCare
   issuePort.fuInFire := DontCare
   private val finalIssueSignals = bypassSigGen(io.bypassIn :+ writebackPort, issuePort, outer.bypassInNum > 0)
-
-  bku.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === exuCfg.fuConfigs.last.fuType
-  bku.io.in.bits.uop := finalIssueSignals.bits.uop
-  bku.io.in.bits.src := finalIssueSignals.bits.src
-  bku.io.redirectIn := redirectIn
-  bku.io.out.ready := true.B
-
-  mul.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === exuCfg.fuConfigs.head.fuType
-  mul.io.in.bits.uop := finalIssueSignals.bits.uop
-  mul.io.in.bits.src(2) := DontCare
-  mul.io.redirectIn := redirectIn
-  mul.io.out.ready := true.B
+  private val fuSeq = Seq(mul, bku, i2f)
+  fuSeq.zip(exuCfg.fuConfigs).foreach({case(m, cfg) =>
+    m.io.redirectIn := redirectIn
+    m.io.in.valid := finalIssueSignals.valid && finalIssueSignals.bits.uop.ctrl.fuType === cfg.fuType
+    m.io.in.bits.uop := finalIssueSignals.bits.uop
+    m.io.in.bits.src := finalIssueSignals.bits.src
+    m.io.out.ready := true.B
+    xs_assert(Mux(m.io.in.valid, m.io.in.ready, true.B))
+  })
+  i2f.rm := finalIssueSignals.bits.uop.ctrl.fpu.rm
 
   private val (func, src1, src2) = (
     finalIssueSignals.bits.uop.ctrl.fuOpType,
@@ -83,21 +83,26 @@ class MulExuImpl(outer:MulExu, exuCfg:ExuConfig)(implicit p:Parameters) extends 
   mul.ctrl.isHi := isH
   mul.ctrl.sign := DontCare
 
-  private val mulOut = WireInit(mul.io.out)
-  private val bkuOut = WireInit(bku.io.out)
-  mulOut.valid := RegNext(mul.io.out.valid, false.B)
-  mulOut.bits.uop := RegEnable(mul.io.out.bits.uop, mul.io.out.valid)
-  bkuOut.valid := RegNext(bku.io.out.valid, false.B)
-  bkuOut.bits.uop := RegEnable(bku.io.out.bits.uop, bku.io.out.valid)
-  private val outSel = Seq(mulOut.valid, bkuOut.valid)
-  private val outData = Seq(mulOut, bkuOut)
+  private val fuOut = fuSeq.map(m =>{
+    val out = WireInit(m.io.out)
+    out.valid := RegNext(m.io.out.valid, false.B)
+    out.bits.uop := RegEnable(m.io.out.bits.uop, m.io.out.valid)
+    out
+  })
+
+  private val outSel = fuOut.map(_.valid)
+  private val outData = fuOut.map(_.bits)
   private val finalData = ParallelMux(outSel, outData)
   writebackPort := DontCare
-  writebackPort.valid := finalData.valid
-  writebackPort.bits.uop := finalData.bits.uop
-  writebackPort.bits.data := finalData.bits.data
-  io.bypassOut := writebackPort
+  writebackPort.valid := outSel.reduce(_||_)
+  writebackPort.bits.uop := finalData.uop
+  writebackPort.bits.data := finalData.data
+  writebackPort.bits.fflags := i2f.fflags
+  io.bypassOut.valid := writebackPort.valid && writebackPort.bits.uop.ctrl.rfWen
+  io.bypassOut.bits := writebackPort.bits
 
   xs_assert(mul.io.in.ready)
   xs_assert(bku.io.in.ready)
+  xs_assert(i2f.io.in.ready)
+  xs_assert(PopCount(outSel) === 1.U || PopCount(outSel) === 0.U)
 }

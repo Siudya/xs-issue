@@ -8,14 +8,13 @@ import issue.MemRs.EntryState._
 import issue.{EarlyWakeUpInfo, WakeUpInfo}
 
 class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, wakeupWidth:Int) extends Module{
-  private val issueWidth = 4
+  private val issueWidth = 3
   val io = IO(new Bundle {
     val redirect = Input(Valid(new Redirect))
 
     val staSelectInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
     val stdSelectInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
     val lduSelectInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
-    val mouSelectInfo = Output(Vec(entryNum, Valid(new SelectInfo)))
     val allocateInfo = Output(UInt(entryNum.W))
 
     val enq = Input(Valid(new Bundle {
@@ -26,11 +25,9 @@ class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, wakeupWidth:In
     val staIssue = Input(Valid(UInt(entryNum.W)))
     val stdIssue = Input(Valid(UInt(entryNum.W)))
     val lduIssue = Input(Valid(UInt(entryNum.W)))
-    val mouIssue = Input(Valid(UInt(entryNum.W)))
     val staIssueUop = Output(new MicroOp)
     val stdIssueUop = Output(new MicroOp)
     val lduIssueUop = Output(new MicroOp)
-    val mouIssueUop = Output(new MicroOp)
 
     val replay = Input(Vec(2, Valid(new Bundle {
       val entryIdxOH = UInt(entryNum.W)
@@ -61,8 +58,8 @@ class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, wakeupWidth:In
     enqEntry.rfWen := in.ctrl.rfWen
     enqEntry.fpWen := in.ctrl.fpWen
     enqEntry.robIdx := in.robIdx
-    enqEntry.staLoadState := Mux(in.ctrl.fuType === FuType.ldu, Mux(in.cf.loadWaitBit, s_wait_st, s_ready), Mux(in.ctrl.fuType === FuType.stu, s_ready, s_issued))
-    enqEntry.stdMouState := Mux(in.ctrl.fuType === FuType.mou || in.ctrl.fuType === FuType.stu, s_ready, s_issued)
+    enqEntry.staLoadState := Mux(in.ctrl.fuType === FuType.ldu, Mux(in.cf.loadWaitBit, s_wait_st, s_ready), s_ready)
+    enqEntry.stdState := Mux(in.ctrl.fuType === FuType.stu, s_ready, s_issued)
     enqEntry.waitTarget := in.cf.waitForRobIdx
     enqEntry.isFirstIssue := false.B
     enqEntry.counter := 0.U
@@ -73,7 +70,6 @@ class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, wakeupWidth:In
   io.staSelectInfo := statusArray.io.staSelectInfo
   io.stdSelectInfo := statusArray.io.stdSelectInfo
   io.lduSelectInfo := statusArray.io.lduSelectInfo
-  io.mouSelectInfo := statusArray.io.mouSelectInfo
   io.allocateInfo := statusArray.io.allocateInfo
   statusArray.io.enq.valid := io.enq.valid
   statusArray.io.enq.bits.addrOH := io.enq.bits.addrOH
@@ -81,7 +77,6 @@ class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, wakeupWidth:In
   statusArray.io.staIssue := io.staIssue
   statusArray.io.stdIssue := io.stdIssue
   statusArray.io.lduIssue := io.lduIssue
-  statusArray.io.mouIssue := io.mouIssue
   statusArray.io.replay := io.replay
   statusArray.io.stIssued := io.stIssued
   statusArray.io.wakeup := io.wakeup
@@ -91,8 +86,8 @@ class MemoryReservationBank(entryNum:Int, stuNum:Int, lduNum:Int, wakeupWidth:In
   payloadArray.io.write.en := io.enq.valid
   payloadArray.io.write.addr := io.enq.bits.addrOH
   payloadArray.io.write.data := io.enq.bits.data
-  private val issueVec = Seq(io.staIssue, io.stdIssue, io.lduIssue, io.mouIssue)
-  private val issueUopVec = Seq(io.staIssueUop, io.stdIssueUop, io.lduIssueUop, io.mouIssueUop)
+  private val issueVec = Seq(io.staIssue, io.stdIssue, io.lduIssue)
+  private val issueUopVec = Seq(io.staIssueUop, io.stdIssueUop, io.lduIssueUop)
   payloadArray.io.read.zip(issueVec).zip(issueUopVec).foreach({
     case((port, issAddr), issData) =>{
       port.addr := issAddr.bits

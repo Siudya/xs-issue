@@ -11,8 +11,9 @@ class WriteBackNetwork(implicit p:Parameters) extends LazyModule{
     private val wbSources = node.in
     private val wbSourcesMap = node.in.map(elm => elm._2 -> (elm._1, elm._2)).toMap
     private val wbSink = node.out
-    private val fflagsNum = wbSources.count(_._2.writeFloatFlags)
-    private val redirectOutNum = wbSources.count(_._2.hasRedirectOut)
+
+    println("\nWriteback Network Info:")
+    println(s"Writeback Num: ${wbSources.length}")
     val io = IO(new Bundle{
       val redirectIn = Input(Valid(new Redirect))
       val redirectOut = Output(Vec(wbSources.count(_._2.hasRedirectOut), Valid(new ExuOutput)))
@@ -28,11 +29,17 @@ class WriteBackNetwork(implicit p:Parameters) extends LazyModule{
       val source = sinkParam.map(elm => wbSourcesMap(elm))
       val sink = s._1
       sink.zip(source).foreach({case(dst, (src,cfg)) =>
-        dst := src
+        val realSrc = WireInit(src)
         if(s._2._1.needWriteback && cfg.speculativeWakeup){
           val realValid = src.valid && !src.bits.uop.robIdx.needFlush(io.redirectIn)
-          dst.valid := RegNext(realValid, false.B)
-          dst.bits.uop := RegEnable(src.bits.uop, realValid)
+          realSrc.valid := RegNext(realValid, false.B)
+          realSrc.bits.uop := RegEnable(src.bits.uop, realValid)
+        }
+        if(s._2._1.isRob){
+          dst.valid := RegNext(realSrc.valid, false.B)
+          dst.bits := RegEnable(realSrc.bits, realSrc.valid)
+        } else {
+          dst := realSrc
         }
       })
     }

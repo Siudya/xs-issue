@@ -8,7 +8,7 @@ import chisel3._
 import chisel3.util._
 import common._
 
-class MemoryBlock (loadNum:Int, storeNum:Int, atomicNum:Int)(implicit p:Parameters) extends BasicExuBlock{
+class MemoryBlock (loadNum:Int, storeNum:Int)(implicit p:Parameters) extends BasicExuBlock{
   private val lduParams = Seq.tabulate(loadNum)(idx => {
     ExuConfig(
       name = "LduExu",
@@ -27,7 +27,7 @@ class MemoryBlock (loadNum:Int, storeNum:Int, atomicNum:Int)(implicit p:Paramete
       exuType = ExuType.sta
     )
   })
-  private val stdParams = Seq.tabulate(storeNum - atomicNum)(idx => {
+  private val stdParams = Seq.tabulate(storeNum)(idx => {
     ExuConfig(
       name = "StdExu",
       id = idx,
@@ -36,25 +36,14 @@ class MemoryBlock (loadNum:Int, storeNum:Int, atomicNum:Int)(implicit p:Paramete
       exuType = ExuType.std
     )
   })
-  private val stdMouParams = Seq.tabulate(atomicNum)(idx => {
-    ExuConfig(
-      name = "StdMouExu",
-      id = idx,
-      complexName = "MemoryBlock",
-      fuConfigs = Seq(FuConfigs.stdCfg, FuConfigs.mouCfg),
-      exuType = ExuType.mou
-    )
-  })
   protected[exublock] val lduIssueNodes = lduParams.zipWithIndex.map(new MemoryBlockIssueNode(_))
   protected[exublock] val lduWritebackNodes = lduParams.map(new ExuOutputNode(_))
   protected[exublock] val staIssueNodes = staParams.zipWithIndex.map(new MemoryBlockIssueNode(_))
   protected[exublock] val staWritebackNodes = staParams.map(new ExuOutputNode(_))
   protected[exublock] val stdIssueNodes = stdParams.zipWithIndex.map(new MemoryBlockIssueNode(_))
   protected[exublock] val stdWritebackNodes = stdParams.map(new ExuOutputNode(_))
-  protected[exublock] val stdMouIssueNodes = stdMouParams.zipWithIndex.map(new MemoryBlockIssueNode(_))
-  protected[exublock] val stdMouWritebackNodes = stdMouParams.map(new ExuOutputNode(_))
-  private val allIssueNodes = lduIssueNodes ++ staIssueNodes ++ stdIssueNodes ++ stdMouIssueNodes
-  private val allWritebackNodes = lduWritebackNodes ++ staWritebackNodes ++ stdWritebackNodes ++ stdMouWritebackNodes
+  private val allIssueNodes = lduIssueNodes ++ staIssueNodes ++ stdIssueNodes
+  private val allWritebackNodes = lduWritebackNodes ++ staWritebackNodes ++ stdWritebackNodes
 
   allIssueNodes.foreach(inode => inode :*= issueNode)
   allWritebackNodes.foreach(onode => writebackNode :=* onode)
@@ -79,11 +68,6 @@ class MemoryBlockImpl(outer:MemoryBlock) extends BasicExuBlockImp(outer){
     dontTouch(iss.in.head._1)
     iss.in.head
   })
-  private val stdMouIssues = outer.stdMouIssueNodes.map(iss => {
-    require(iss.in.length == 1)
-    dontTouch(iss.in.head._1)
-    iss.in.head
-  })
   private val lduWritebacks = outer.lduWritebackNodes.map(wb => {
     require(wb.out.length == 1)
     dontTouch(wb.out.head._1)
@@ -99,16 +83,16 @@ class MemoryBlockImpl(outer:MemoryBlock) extends BasicExuBlockImp(outer){
     dontTouch(wb.out.head._1)
     wb.out.head
   })
-  private val stdMouWritebacks = outer.stdMouWritebackNodes.map(wb => {
-    require(wb.out.length == 1)
-    dontTouch(wb.out.head._1)
-    wb.out.head
-  })
   val io = IO(new Bundle{
     val earlyWakeUpCancel = Output(Vec(lduIssues.length, Bool()))
+    val issueToMou = Flipped(Decoupled(new ExuInput))
+    val writebackFromMou = Decoupled(new ExuOutput)
   })
+  io.issueToMou.ready := true.B
+  io.writebackFromMou.valid := false.B
+  io.writebackFromMou.bits := DontCare
   io.earlyWakeUpCancel := DontCare
-
+  dontTouch(io)
 }
 
 

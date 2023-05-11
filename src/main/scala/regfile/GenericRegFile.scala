@@ -27,7 +27,7 @@ class GenericRegFile(entriesNum:Int, writeBackNum:Int, bypassNum:Int, readPortNu
     val extraWrite = Vec(extraWriteNum, new WritePort(dataWidth, hasMask))
   })
   override val desiredName = moduleName
-  println(s"${moduleName} read ports: ${readPortNum}")
+  println(s"${moduleName} read ports: $readPortNum regular write ports: $writeBackNum bypass write ports $bypassNum extra write ports $extraWriteNum")
 
   if(hasMask) {
     val bankNum = dataWidth / 8

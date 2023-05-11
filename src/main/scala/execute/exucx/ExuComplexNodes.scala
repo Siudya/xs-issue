@@ -18,14 +18,12 @@ case class ExuComplexParam
   val hasAlu: Boolean = exuConfigs.map(_.exuType == ExuType.alu).reduce(_ || _)
   val hasMul: Boolean = exuConfigs.map(_.exuType == ExuType.mul).reduce(_ || _)
   val hasDiv: Boolean = exuConfigs.map(_.exuType == ExuType.div).reduce(_ || _)
-  val hasI2f: Boolean = exuConfigs.map(_.exuType == ExuType.i2f).reduce(_ || _)
   val hasFmac: Boolean = exuConfigs.map(_.exuType == ExuType.fmac).reduce(_ || _)
   val hasFmisc: Boolean = exuConfigs.map(_.exuType == ExuType.fmisc).reduce(_ || _)
   val hasFdiv: Boolean = exuConfigs.map(_.exuType == ExuType.fdiv).reduce(_ || _)
   val hasLoad: Boolean = exuConfigs.map(_.exuType == ExuType.ldu).reduce(_ || _)
   val hasSta: Boolean = exuConfigs.map(_.exuType == ExuType.sta).reduce(_ || _)
-  val hasMou: Boolean = exuConfigs.map(_.exuType == ExuType.mou).reduce(_ || _)
-  val hasStd: Boolean = exuConfigs.map(_.exuType == ExuType.std).reduce(_ || _) || hasMou
+  val hasStd: Boolean = exuConfigs.map(_.exuType == ExuType.std).reduce(_ || _)
   val hasVred:Boolean = exuConfigs.map(_.exuType == ExuType.vred).reduce(_ || _)
   val hasVmisc:Boolean = exuConfigs.map(_.exuType == ExuType.vmisc).reduce(_ || _)
   val hasVfp:Boolean = exuConfigs.map(_.exuType == ExuType.vfp).reduce(_ || _)
@@ -38,20 +36,18 @@ case class ExuComplexParam
   val fpSrcNum:Int = exuConfigs.map(_.fpSrcNum).max
 
   val isAluDiv:Boolean = hasAlu && hasDiv
-  val isAluI2f:Boolean = hasAlu && hasI2f
+  val isAluJmp:Boolean = hasAlu && hasJmp
   val isAluMul:Boolean = hasAlu && hasMul
-  val isJmpCsr:Boolean = hasJmp
   val isFmac:Boolean = hasFmac && !hasFdiv && !hasFmisc
   val isFmaDiv:Boolean = hasFmac && hasFdiv
   val isFmaMisc:Boolean = hasFmac && hasFmisc
   val isSta:Boolean = hasSta
-  val isStd:Boolean = hasStd && !hasMou
+  val isStd:Boolean = hasStd
   val isLdu:Boolean = hasLoad
-  val isStdMou:Boolean = hasMou
 
   val needToken:Boolean = exuConfigs.map(_.needToken).reduce(_||_)
 
-  val readIntegerRegfile:Boolean = isAluDiv || isAluI2f || isAluMul || isJmpCsr || hasSta || hasStd || hasLoad || hasVmisc || hasVint
+  val readIntegerRegfile:Boolean = isAluDiv || isAluJmp || isAluMul || hasSta || hasStd || hasLoad || hasVmisc || hasVint
   val readFloatingRegfile:Boolean = isFmac || isFmaDiv || isFmaMisc || hasStd || hasVfp
   val readVectorRegfile:Boolean = isVecType || hasLoad || hasStd || hasSta
 

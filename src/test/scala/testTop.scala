@@ -26,9 +26,9 @@ class MyConfig extends Config((site, here, up) => {
 
 class TestTop(implicit p:Parameters) extends LazyModule{
   private val pcMemEntries = 64
-  private val integerBlock = LazyModule(new IntegerBlock(2, 1, 1, 1))
+  private val integerBlock = LazyModule(new IntegerBlock(2, 1, 1))
   private val floatingBlock = LazyModule(new FloatingBlock(2, 1, 1))
-  private val memoryBlock = LazyModule(new MemoryBlock(2, 2, 1))
+  private val memoryBlock = LazyModule(new MemoryBlock(2, 2))
   private val integerReservationStation = LazyModule(new IntegerReservationStation(4, 16))
   private val floatingReservationStation = LazyModule(new FloatingReservationStation(4, 16))
   private val memoryReservationStation = LazyModule(new MemoryReservationStation(4, 16, 6))
@@ -83,6 +83,12 @@ class TestTop(implicit p:Parameters) extends LazyModule{
     regFile.module.io.pcReadData.zip(pcMem.io.read).foreach({case(data, r) => data := r.data})
 
     integerBlock.module.io.fenceio <> io.fenceio
+    memoryBlock.module.io.issueToMou <> integerBlock.module.io.issueToMou
+    memoryBlock.module.io.writebackFromMou <> integerBlock.module.io.writebackFromMou
+
+    memoryBlock.module.redirectIn := io.redirectIn
+    integerBlock.module.redirectIn := io.redirectIn
+    floatingBlock.module.redirectIn := io.redirectIn
 
     writebackNetwork.module.io.redirectIn := io.redirectIn
     io.redirectOut.zip(writebackNetwork.module.io.redirectOut).foreach({case(sink, src) =>

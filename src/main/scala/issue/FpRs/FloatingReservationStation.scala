@@ -97,6 +97,7 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
     sink.valid := source.valid
     sink.bits := source.bits
     source.ready := sink.ready
+    xs_assert(Mux(source.valid, FuType.floatingTypes.map(_ === source.bits.ctrl.fuType).reduce(_||_), true.B))
   })
 
   for(((fromAllocate, toAllocate), rsBank) <- allocateNetwork.io.enqToRs
@@ -119,7 +120,7 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
       issueDriver.io.redirect := io.redirect
       issueDriver.io.earlyWakeUpCancel := io.earlyWakeUpCancel
 
-      val midStateWaitQueue = Module(new MidStateWaitQueue(2, param.bankNum, entriesNumPerBank))
+      val midStateWaitQueue = Module(new MidStateWaitQueue(3, param.bankNum, entriesNumPerBank))
       midStateWaitQueue.io.redirect := io.redirect
 
       val finalSelectInfo = if (iss._2.isFmac) {
@@ -128,14 +129,14 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
       } else if (iss._2.isFmaDiv) {
         fmaPortIdx = fmaPortIdx + 1
         fdivPortIdx = fdivPortIdx + 1
-        val selectRespArbiter = Module(new Arbiter(new SelectResp(param.bankNum, entriesNumPerBank), 2))
+        val selectRespArbiter = Module(new SelectRespArbiter(param.bankNum, entriesNumPerBank, 2))
         selectRespArbiter.io.in(0) <> fmacSelectNetwork.io.issueInfo(fmaPortIdx - 1)
         selectRespArbiter.io.in(1) <> fdivSelectNetwork.io.issueInfo(fdivPortIdx - 1)
         selectRespArbiter.io.out
       } else {
         fmaPortIdx = fmaPortIdx + 1
         fmiscPortIdx = fmiscPortIdx + 1
-        val selectRespArbiter = Module(new Arbiter(new SelectResp(param.bankNum, entriesNumPerBank), 2))
+        val selectRespArbiter = Module(new SelectRespArbiter(param.bankNum, entriesNumPerBank, 2))
         selectRespArbiter.io.in(0) <> fmacSelectNetwork.io.issueInfo(fmaPortIdx - 1)
         selectRespArbiter.io.in(1) <> fmiscSelectNetwork.io.issueInfo(fmiscPortIdx - 1)
         selectRespArbiter.io.out
@@ -219,4 +220,8 @@ class FloatingReservationStationImpl(outer:FloatingReservationStation, param:RsP
       bankForThisWaitQueue.io.midResultEnq.bits.data := iss._1.fmaMidState.out.bits.midResult.asUInt(midResultWidth - 1, XLEN)
     }
   }
+  println("\nFloating Reservation Wake Up Ports Config:")
+  wakeup.zipWithIndex.foreach({ case ((_, cfg), idx) =>
+    println(s"Wake Port $idx ${cfg.name} of ${cfg.complexName} #${cfg.id}")
+  })
 }

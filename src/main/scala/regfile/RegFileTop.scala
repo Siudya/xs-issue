@@ -16,7 +16,9 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
   lazy val module = new LazyModuleImp(this) with XSParam {
     val pcReadNum:Int = issueNode.out.count(_._2._2.hasJmp) * 2 + issueNode.out.count(_._2._2.hasLoad)
     println("\nRegfile Configuration:")
-    println(s"PC read num: $pcReadNum")
+    println(s"PC read num: $pcReadNum \n")
+    println("Regfile Writeback Info:")
+
     val io = IO(new Bundle{
       val pcReadAddr = Output(Vec(pcReadNum, UInt(log2Ceil(FtqSize).W)))
       val pcReadData = Input(Vec(pcReadNum, new Ftq_RF_Components))
@@ -26,9 +28,12 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
     require(issueNode.in.count(_._2._1.isFpRs) <= 1)
     require(writebackNode.in.length == 1)
     require(issueNode.out.count(_._2._2.hasJmp) == 1)
-    require(issueNode.out.count(_._2._2.hasMou) == 1)
 
     private val wb = writebackNode.in.flatMap(i => i._1.zip(i._2))
+    wb.zipWithIndex.foreach({ case ((_, cfg), idx) =>
+      println(s"port $idx ${cfg.name} #${cfg.id} write Int: ${cfg.writeIntRf} write Fp: ${cfg.writeFpRf} bypass Int: ${cfg.bypassIntRegfile} bypass Fp: ${cfg.bypassFpRegfile}")
+    })
+    println("")
 
     private val fromRs = issueNode.in.flatMap(i => i._1.zip(i._2._2).map(e => (e._1, e._2, i._2._1)))
     private val toExuMap = issueNode.out.map(i => i._2._2 -> (i._1, i._2._2, i._2._1)).toMap
@@ -37,9 +42,9 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
     private val needFpSrc = issueNode.out.filter(i => i._2._2.readFloatingRegfile).map(i => (i._1, i._2._2, i._2._1))
 
     private val writeIntRfBypass = wb.filter(i => i._2.bypassIntRegfile)
-    private val writeIntRf = wb.filterNot(i => i._2.bypassIntRegfile && i._2.writeIntRf)
+    private val writeIntRf = wb.filter(i => !i._2.bypassIntRegfile && i._2.writeIntRf)
     private val writeFpRfBypass = wb.filter(i => i._2.bypassFpRegfile)
-    private val writeFpRf = wb.filterNot(i => i._2.bypassFpRegfile && i._2.writeFpRf)
+    private val writeFpRf = wb.filter(i => !i._2.bypassFpRegfile && i._2.writeFpRf)
     private val fmacFeedbacks = needFpSrc.filter(_._2.hasFmac).map(_._1)
 
     private val intRf = Module(new GenericRegFile(GprEntriesNum, writeIntRf.length, writeIntRfBypass.length, needIntSrc.map(_._2.intSrcNum).sum, XLEN, "IntegerRegFile"))
@@ -134,19 +139,8 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
           intRfReadIdx = intRfReadIdx + 1
           fpRfReadIdx = fpRfReadIdx + 1
         } else {
-          //STD MOU
-          intRf.io.read(intRfReadIdx).addr := bi.issue.bits.uop.psrc(0)
-          intRf.io.read(intRfReadIdx + 1).addr := bi.issue.bits.uop.psrc(1)
-          fpRf.io.read(fpRfReadIdx).addr := bi.issue.bits.uop.psrc(1)
-          val intData0 = intRf.io.read(intRfReadIdx).data
-          val intData1 = intRf.io.read(intRfReadIdx + 1).data
-          val fpData = fpRf.io.read(fpRfReadIdx).data
-          val srcIsInt = bi.issue.bits.uop.ctrl.srcType(1) === SrcType.reg
-          val isMou = bi.issue.bits.uop.ctrl.fuType === FuType.mou
-          exuInBundle.src(0) := Mux(isMou, intData0, Mux(srcIsInt, intData1, fpData))
-          exuInBundle.src(1) := intData1
-          intRfReadIdx = intRfReadIdx + 2
-          fpRfReadIdx = fpRfReadIdx + 1
+          exuInBundle := DontCare
+          require(false, "Unknown Exu Complex Type")
         }
 
         val issueValidReg = RegInit(false.B)
@@ -156,8 +150,6 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
         val rsIdxReg = Reg(new RsIdx(rsParam.bankNum, rsParam.entriesNum))
 
         val allowPipe = !issueValidReg || bo.issue.fire
-        bi.fuInFire := bo.issue.fire
-        bi.issue.ready := allowPipe
         bo.issue.valid := issueValidReg
         bo.issue.bits := issueExuInReg
         bo.fmaMidState.in := midResultReg
@@ -172,6 +164,11 @@ class RegFileTop(implicit p:Parameters) extends LazyModule{
           fmaWaitAddReg := bi.fmaMidState.waitForAdd
           rsIdxReg := bi.rsIdx
         }
+
+        bi.fuInFire := bo.issue.fire
+        bi.issue.ready := allowPipe
+        bi.fmaMidState.out.valid := RegNext(bo.fmaMidState.out.valid, false.B)
+        bi.fmaMidState.out.bits := RegEnable(bo.fmaMidState.out.bits, bo.fmaMidState.out.valid)
       }
     }
   }

@@ -49,25 +49,6 @@ object FuType {
   def X = BitPat("b????")
   def num = 14
   def apply() = UInt(log2Up(num).W)
-  def isIntExu(fuType: UInt) = !fuType(3)
-  def isJumpExu(fuType: UInt) = fuType === jmp
-  def isFpExu(fuType: UInt) = fuType(3, 2) === "b10".U
-  def isMemExu(fuType: UInt) = fuType(3, 2) === "b11".U
-  def isLoadStore(fuType: UInt) = isMemExu(fuType) && !fuType(1)
-  def isStoreExu(fuType: UInt) = isMemExu(fuType) && fuType(0)
-  def isAMO(fuType: UInt) = fuType(1)
-  def isFence(fuType: UInt) = fuType === fence
-  def isSvinvalBegin(fuType: UInt, func: UInt, flush: Bool) = isFence(fuType) && func === FenceOpType.nofence && !flush
-  def isSvinval(fuType: UInt, func: UInt, flush: Bool) = isFence(fuType) && func === FenceOpType.sfence && !flush
-  def isSvinvalEnd(fuType: UInt, func: UInt, flush: Bool) = isFence(fuType) && func === FenceOpType.nofence && flush
-  def jmpCanAccept(fuType: UInt) = !fuType(2)
-  def mduCanAccept(fuType: UInt) = fuType(2) && !fuType(1) || fuType(2) && fuType(1) && fuType(0)
-  def aluCanAccept(fuType: UInt) = fuType(2) && fuType(1) && !fuType(0)
-  def fmacCanAccept(fuType: UInt) = !fuType(1)
-  def fmiscCanAccept(fuType: UInt) = fuType(1)
-  def loadCanAccept(fuType: UInt) = !fuType(0)
-  def storeCanAccept(fuType: UInt) = fuType(0)
-  def storeIsAMO(fuType: UInt) = fuType(1)
   val functionNameMap = Map(
     jmp.litValue -> "jmp",
     i2f.litValue -> "int_to_float",
@@ -84,6 +65,10 @@ object FuType {
     stu.litValue -> "store",
     mou.litValue -> "mou"
   )
+
+  def integerTypes: Seq[UInt] = Seq(jmp, i2f, csr, alu, mul, div, fence, bku, mou)
+  def floatingTypes: Seq[UInt] = Seq(fmac, fmisc, fDivSqrt)
+  def memoryTypes: Seq[UInt] = Seq(ldu, stu)
 }
 object FuOpType {
   def apply() = UInt(7.W)
@@ -253,6 +238,8 @@ class CtrlSignals extends Bundle {
   val selImm = SelImm()
   val imm = UInt(ImmUnion.maxLen.W)
   val fpu = new FPUCtrlSignals
+  val noSpecExec = Bool() // wait forward
+  val blockBackward = Bool() // block backward
 }
 
 object RedirectLevel {
