@@ -251,6 +251,8 @@ object RedirectLevel {
   // def isException(level: UInt) = level(1) && level(0)
 }
 class CfiUpdateInfo extends XSBundle{
+  val pc = UInt(VAddrBits.W)
+  val pd = new PreDecodeInfo
   val predTaken = Bool()
   val taken = Bool()
   val isMisPred = Bool()
@@ -263,7 +265,9 @@ class Redirect extends XSBundle {
   val level = RedirectLevel()
   val interrupt = Bool()
   val cfiUpdate = new CfiUpdateInfo
-
+  val isCsr = Bool()
+  val isLoadLoad = Bool()
+  val isLoadStore = Bool()
   val stFtqIdx = new FtqPtr // for load violation predict
   val stFtqOffset = UInt(log2Up(32).W)
 
@@ -282,6 +286,19 @@ class Redirect extends XSBundle {
 //  val sqIdx = new SqPtr
 //  val eliminatedMove = Bool()
 //}
+
+class MemPredUpdateReq(implicit p: Parameters) extends XSBundle  {
+  val valid = Bool()
+
+  // wait table update
+  val waddr = UInt(MemPredPCWidth.W)
+  val wdata = Bool() // true.B by default
+
+  // store set update
+  // by default, ldpc/stpc should be xor folded
+  val ldpc = UInt(MemPredPCWidth.W)
+  val stpc = UInt(MemPredPCWidth.W)
+}
 
 class MicroOp extends CfCtrl {
   val srcState = Vec(3, SrcState())
@@ -329,6 +346,8 @@ trait XSParam{
   val PAddrBits = 36
   val PredictWidth = 16
   val instOffsetBits = 1
+  val WaitTableSize = 1024
+  val MemPredPCWidth = log2Up(WaitTableSize)
 }
 class XSBundle extends Bundle with XSParam
 class XSModule extends Module with XSParam

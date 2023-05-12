@@ -26,14 +26,14 @@ class MyConfig extends Config((site, here, up) => {
 
 class TestTop(implicit p:Parameters) extends LazyModule{
   private val pcMemEntries = 64
-  private val integerBlock = LazyModule(new IntegerBlock(2, 1, 1))
-  private val floatingBlock = LazyModule(new FloatingBlock(2, 1, 1))
-  private val memoryBlock = LazyModule(new MemoryBlock(2, 2))
   private val integerReservationStation = LazyModule(new IntegerReservationStation(4, 16))
   private val floatingReservationStation = LazyModule(new FloatingReservationStation(4, 16))
   private val memoryReservationStation = LazyModule(new MemoryReservationStation(4, 16, 6))
-  private val writebackNetwork = LazyModule(new WriteBackNetwork)
+  private val integerBlock = LazyModule(new IntegerBlock(2, 1, 1))
+  private val floatingBlock = LazyModule(new FloatingBlock(2, 1, 1))
+  private val memoryBlock = LazyModule(new MemoryBlock(2, 2))
   private val regFile = LazyModule(new RegFileTop)
+  private val writebackNetwork = LazyModule(new WriteBackNetwork)
   private val exuBlocks = integerBlock :: floatingBlock :: memoryBlock :: Nil
 
   regFile.issueNode :*= integerReservationStation.issueNode
@@ -49,29 +49,28 @@ class TestTop(implicit p:Parameters) extends LazyModule{
   memoryReservationStation.wakeupNode := writebackNetwork.node
 
   lazy val module = new LazyModuleImp(this){
-    private val redirectOutNum = writebackNetwork.node.in.count(_._2.hasRedirectOut)
     val io = IO(new Bundle {
-      val redirectIn = Input(Valid(new Redirect))
       val enqInt = Vec(4, Flipped(DecoupledIO(new MicroOp)))
       val enqFp = Vec(4, Flipped(DecoupledIO(new MicroOp)))
       val enqMem = Vec(4, Flipped(DecoupledIO(new MicroOp)))
-      val redirectOut = Output(Vec(redirectOutNum, Valid(new Redirect)))
+      val redirectOut = Output(Valid(new Redirect))
       val fenceio = new FenceIO
       val pcMemWrite = new PcWritePort(log2Ceil(pcMemEntries))
     })
-    exuBlocks.foreach(_.module.redirectIn := io.redirectIn)
+    private val localRedirect = writebackNetwork.module.io.redirectOut
+    exuBlocks.foreach(_.module.redirectIn := Pipe(localRedirect))
 
-    integerReservationStation.module.io.redirect := io.redirectIn
+    integerReservationStation.module.io.redirect := Pipe(localRedirect)
     integerReservationStation.module.io.enq <> io.enqInt
     integerReservationStation.module.io.loadEarlyWakeup := memoryReservationStation.module.io.loadEarlyWakeup
     integerReservationStation.module.io.earlyWakeUpCancel := memoryBlock.module.io.earlyWakeUpCancel
 
-    floatingReservationStation.module.io.redirect := io.redirectIn
+    floatingReservationStation.module.io.redirect := Pipe(localRedirect)
     floatingReservationStation.module.io.enq <> io.enqFp
     floatingReservationStation.module.io.loadEarlyWakeup := memoryReservationStation.module.io.loadEarlyWakeup
     floatingReservationStation.module.io.earlyWakeUpCancel := memoryBlock.module.io.earlyWakeUpCancel
 
-    memoryReservationStation.module.io.redirect := io.redirectIn
+    memoryReservationStation.module.io.redirect := Pipe(localRedirect)
     memoryReservationStation.module.io.enq <> io.enqMem
     memoryReservationStation.module.io.specWakeup := integerReservationStation.module.io.specWakeup
     memoryReservationStation.module.io.earlyWakeUpCancel := memoryBlock.module.io.earlyWakeUpCancel
@@ -79,22 +78,18 @@ class TestTop(implicit p:Parameters) extends LazyModule{
     private val pcMem = Module(new PcMem(pcMemEntries, regFile.module.pcReadNum, 1))
     pcMem.io.write.head := io.pcMemWrite
 
-    pcMem.io.read.zip(regFile.module.io.pcReadAddr).foreach({case(r, addr) => r.addr := addr})
-    regFile.module.io.pcReadData.zip(pcMem.io.read).foreach({case(data, r) => data := r.data})
+    pcMem.io.read.zip(regFile.module.io.pcReadAddr ++ writebackNetwork.module.io.pcReadAddr).foreach({case(r, addr) => r.addr := addr})
+    (regFile.module.io.pcReadData ++ writebackNetwork.module.io.pcReadData).zip(pcMem.io.read).foreach({case(data, r) => data := r.data})
 
     integerBlock.module.io.fenceio <> io.fenceio
     memoryBlock.module.io.issueToMou <> integerBlock.module.io.issueToMou
     memoryBlock.module.io.writebackFromMou <> integerBlock.module.io.writebackFromMou
 
-    memoryBlock.module.redirectIn := io.redirectIn
-    integerBlock.module.redirectIn := io.redirectIn
-    floatingBlock.module.redirectIn := io.redirectIn
+    memoryBlock.module.redirectIn := Pipe(localRedirect)
+    integerBlock.module.redirectIn := Pipe(localRedirect)
+    floatingBlock.module.redirectIn := Pipe(localRedirect)
 
-    writebackNetwork.module.io.redirectIn := io.redirectIn
-    io.redirectOut.zip(writebackNetwork.module.io.redirectOut).foreach({case(sink, src) =>
-      sink.valid := src.bits.redirectValid
-      sink.bits := src.bits.redirect
-    })
+    io.redirectOut := writebackNetwork.module.io.redirectOut
   }
 }
 

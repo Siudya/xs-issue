@@ -2,7 +2,8 @@ package issue.IntRs
 import issue._
 import chisel3._
 import chisel3.util._
-import common.{ MicroOp, Redirect}
+import common.{MicroOp, Redirect}
+import issue.IntRs.EntryState.s_ready
 import issue.{EarlyWakeUpInfo, WakeUpInfo}
 
 class IntegerReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, loadUnitNum:Int) extends Module{
@@ -41,7 +42,7 @@ class IntegerReservationBank(entryNum:Int, issueWidth:Int, wakeupWidth:Int, load
     enqEntry.rfWen := in.ctrl.rfWen
     enqEntry.fpWen := in.ctrl.fpWen
     enqEntry.robIdx := in.robIdx
-    enqEntry.issued := false.B
+    enqEntry.state := s_ready
     enqEntry
   }
 
