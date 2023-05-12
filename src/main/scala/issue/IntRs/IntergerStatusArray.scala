@@ -27,7 +27,13 @@ import issue._
 import xs.utils.Assertion.xs_assert
 import xs.utils.LogicShiftRight
 import firrtl.passes.InlineAnnotation
-
+import issue.IntRs.EntryState._
+protected[IntRs] object EntryState{
+  def s_ready:UInt = 0.U
+  def s_wait_cancel: UInt = 1.U
+  def s_issued: UInt = 2.U
+  def apply() = UInt(2.W)
+}
 class IntegerIssueInfoGenerator extends XSModule{
   val io = IO(new Bundle{
     val in = Input(Valid(new IntegerStatusArrayEntry))
@@ -39,7 +45,7 @@ class IntegerIssueInfoGenerator extends XSModule{
   private val ib = io.in.bits
   private val shouldBeFlushed = ib.robIdx.needFlush(io.redirect)
   private val shouldBeCanceled = ib.lpv.map(l => l.zip(io.earlyWakeUpCancel).map({ case (li, c) => li(1) && c }).reduce(_ || _)).reduce(_ || _)
-  private val readyToIssue = ib.srcState(0) === SrcState.rdy & ib.srcState(1) === SrcState.rdy & !ib.issued
+  private val readyToIssue = ib.srcState(0) === SrcState.rdy & ib.srcState(1) === SrcState.rdy && ib.state === s_ready
   io.out.valid := readyToIssue && iv && !shouldBeFlushed && !shouldBeCanceled
   io.out.bits.fuType := ib.fuType
   io.out.bits.robPtr := ib.robIdx
@@ -55,7 +61,7 @@ class IntegerIssueInfoGenerator extends XSModule{
   })
 }
 class IntegerStatusArrayEntry extends BasicStatusArrayEntry(2, true){
-  val issued = Bool()
+  val state = EntryState()
 }
 
 class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int) extends XSModule{
@@ -93,16 +99,35 @@ class IntegerStatusArrayEntryUpdateNetwork(issueWidth:Int, wakeupWidth:Int) exte
   private val srcShouldBeCancelled = io.entry.bits.lpv.map(l => io.earlyWakeUpCancel.zip(l).map({ case(c, li) => li(0) & c}).reduce(_|_))
   private val shouldBeIssued = Cat(io.issue).orR
   private val shouldBeCancelled = srcShouldBeCancelled.reduce(_|_)
-  miscNext.bits.issued := Mux(shouldBeCancelled, false.B, Mux(shouldBeIssued, true.B, io.entry.bits.issued))
+  private val mayNeedReplay = io.entry.bits.lpv.map(_.map(_.orR).reduce(_|_)).reduce(_|_)
+  private val state = io.entry.bits.state
+  private val stateNext = io.entryNext.bits.state
+
+  switch(state){
+    is(s_ready){
+      when(shouldBeIssued){
+        stateNext := Mux(mayNeedReplay, s_wait_cancel, s_issued)
+      }
+    }
+    is(s_wait_cancel){
+      when(!mayNeedReplay){
+        stateNext := s_issued
+      }.elsewhen(shouldBeCancelled){
+        stateNext := s_ready
+      }
+    }
+  }
+  xs_assert(Mux(io.entry.valid, state === s_ready || state === s_wait_cancel || state === s_issued, true.B))
+
   srcShouldBeCancelled.zip(miscNext.bits.srcState).foreach{case(en, state) => when(en){state := SrcState.busy}}
-  private val miscUpdateEnCancelOrIssue = Cat(shouldBeCancelled, shouldBeIssued).orR
-  xs_assert(!shouldBeIssued || !shouldBeCancelled)
+
+  private val miscUpdateEnCancelOrIssue = shouldBeIssued || shouldBeCancelled || mayNeedReplay
+
   //End of issue and cancel
 
   //Start of dequeue and redirect
   private val shouldBeFlushed = io.entry.valid & io.entry.bits.robIdx.needFlush(io.redirect)
-  private val mayNeedReplay = io.entry.bits.lpv.map(_.map(_.orR).reduce(_|_)).reduce(_|_)
-  private val miscUpdateEnDequeueOrRedirect = (io.entry.bits.issued && !mayNeedReplay) || shouldBeFlushed
+  private val miscUpdateEnDequeueOrRedirect = io.entry.bits.state === s_issued || shouldBeFlushed
   when(miscUpdateEnDequeueOrRedirect) {
     miscNext.valid := false.B
   }

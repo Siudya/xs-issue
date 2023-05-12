@@ -133,8 +133,8 @@ class MemoryStatusArrayEntryUpdateNetwork(stuNum:Int, wakeupWidth:Int) extends X
   private val staLoadStateNext = io.entryNext.bits.staLoadState
   private val stdStateNext = io.entryNext.bits.stdState
   private val miscUpdateEnCancelOrIssue = WireInit(false.B)
-
-  miscUpdateEnCancelOrIssue := needReplay || counter.orR || src0HasSpecWakeup || src1HasSpecWakeup || stIssueHit || staLoadIssued || stdIssued
+  private val shouldBeCanceled = srcShouldBeCancelled.reduce(_|_)
+  miscUpdateEnCancelOrIssue := needReplay || counter.orR || src0HasSpecWakeup || src1HasSpecWakeup || stIssueHit || staLoadIssued || stdIssued || shouldBeCanceled
 
   when(imLoad) {
     switch(staLoadState) {
@@ -202,8 +202,6 @@ class MemoryStatusArrayEntryUpdateNetwork(stuNum:Int, wakeupWidth:Int) extends X
       }
     }
   }
-  private val shouldBeCanceled = srcShouldBeCancelled.reduce(_|_)
-  private val maybeCanceled = src0HasSpecWakeup || src1HasSpecWakeup
 
   when(io.replay.valid){
     counterNext := io.replay.bits
