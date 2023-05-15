@@ -36,7 +36,7 @@ class DivExuImpl(outer:DivExu, exuCfg:ExuConfig) extends BasicExuImpl(outer) wit
   private val finalIssueSignals = bypassSigGen(io.bypassIn, issuePort, outer.bypassInNum > 0)
 
   private val divSel = PickOneHigh(Cat(divs.map(_.io.in.ready).reverse))
-  issuePort.issue.ready := divSel.valid
+  issuePort.issue.ready := true.B
   issuePort.fmaMidState.out := DontCare
   issuePort.fuInFire := DontCare
   for(((div, en), arbIn) <- divs.zip(Mux(divSel.valid, divSel.bits, 0.U).asBools).zip(outputArbiter.io.in)){

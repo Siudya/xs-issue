@@ -13,7 +13,7 @@ class MemoryBlock (loadNum:Int, storeNum:Int)(implicit p:Parameters) extends Bas
     ExuConfig(
       name = "LduExu",
       id = idx,
-      complexName = "MemoryBlock",
+      complexName = "LduComplex",
       fuConfigs = Seq(FuConfigs.lduCfg),
       exuType = ExuType.ldu
     )
@@ -22,7 +22,7 @@ class MemoryBlock (loadNum:Int, storeNum:Int)(implicit p:Parameters) extends Bas
     ExuConfig(
       name = "StaExu",
       id = idx,
-      complexName = "MemoryBlock",
+      complexName = "StaComplex",
       fuConfigs = Seq(FuConfigs.staCfg),
       exuType = ExuType.sta
     )
@@ -31,7 +31,7 @@ class MemoryBlock (loadNum:Int, storeNum:Int)(implicit p:Parameters) extends Bas
     ExuConfig(
       name = "StdExu",
       id = idx,
-      complexName = "MemoryBlock",
+      complexName = "StdComplex",
       fuConfigs = Seq(FuConfigs.stdCfg),
       exuType = ExuType.std
     )

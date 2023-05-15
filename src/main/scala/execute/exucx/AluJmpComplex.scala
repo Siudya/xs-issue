@@ -8,7 +8,7 @@ import freechips.rocketchip.diplomacy.LazyModule
 import xs.utils.Assertion.xs_assert
 
 class AluJmpComplex(id: Int, bypassNum:Int)(implicit p:Parameters) extends BasicExuComplex{
-  val alu = LazyModule(new AluExu(id, "AluI2FComplex", bypassNum))
+  val alu = LazyModule(new AluExu(id, "AluJmpComplex", bypassNum))
   val jmp = LazyModule(new JmpCsrExu(id, "AluJmpComplex", bypassNum))
   alu.issueNode :*= issueNode
   jmp.issueNode :*= issueNode
